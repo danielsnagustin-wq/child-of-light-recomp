@@ -1,0 +1,428 @@
+# Recompile Child of Light for Android, via rexauto
+#
+# Adaptación del "Recompile for Android" de rexauto
+# (Player124413/rexauto, rama arena/01a07629-rexauto, commit verificado
+#  dac49b331f2632f0b050f469e35747721300b8b2) para el port nativo de
+# Child of Light (Xbox 360 -> Android) en este repo.
+#
+# Uso: Actions -> "Recompile Child of Light for Android (rexauto)" -> Run workflow
+#   iso_url:    URL de la ISO del juego (directa, Google Drive o Dropbox).
+#               La ISO es la copia propia del usuario; nunca se commitea: solo
+#               vive en el runner y se borra al terminar cada job.
+#   iso_sha256: SHA-256 de la ISO (opcional, recomendado).
+#
+# Diferencias frente al android.yml original de rexauto (todas deliberadas,
+# documentadas en docs/REXAUTo.md):
+#   1. Nombre de proyecto fijo: `childoflight` (rexauto exige [a-z0-9_]{1,40};
+#      `child-of-light` con guiones es inválido). No hay input `name`.
+#   2. Doble checkout: este repo + rexauto en `rexauto/` (commit fijado arriba).
+#      Todos los scripts de rexauto (rexauto.py, tools/*, android/*) se ejecutan
+#      desde ese checkout; este repo solo aporta el workflow y la documentación.
+#   3. `runheal` por defecto `true` (en rexauto Android es `false`): sin gabarito
+#      previo de CoL, el heal en Windows es la única fuente de curas.
+#      `heal_iters` por defecto `"6"` (en rexauto Android es `"4"`).
+#   4. Keystore CI estable vía secretos (ver §6 de docs/REXAUTo.md): el YAML de
+#      rexauto genera un keystore nuevo en cada run aunque su README diga que la
+#      clave es estable — verificado leyendo el YAML. Aquí se restaura el
+#      keystore del secreto CI_KEYSTORE_BASE64 si existe; si no, se genera uno
+#      nuevo y se avisa de que esa APK no actualizará sobre builds anteriores.
+#   5. Modelo público (decisión del usuario 2026-11-13): el repo es PÚBLICO
+#      para tener minutos ilimitados + runners grandes. La APK NUNCA sale como
+#      Release público: solo como artefacto de Actions con retención corta
+#      (7 días), y el repo no contiene código ni datos del juego (ver
+#      docs/DMCA.md). El guard de repo privado de la versión anterior se quitó
+#      con esta decisión.
+#   6. Liberar disco + swap de 16 GB en el job `apk` (patrón UnleashedRecomp_Android):
+#      los runners tienen ~14 GB de SSD y la build es grande.
+#
+# TODO (ver docs/REXAUTo.md §9):
+#   - URL + SHA-256 de la ISO (input del usuario).
+#   - Secretos CI_KEYSTORE_BASE64 (+ CI_KEYSTORE_PASSWORD) antes del primer run
+#     de producción.
+#   - Title ID a confirmar con el dump (citado 5841140D, no verificado).
+#   - Jump tables: el CI salta jumptables siempre (--no-jumptables, no hay IDA).
+
+name: Recompile Child of Light for Android (rexauto)
+
+on:
+  workflow_dispatch:
+    inputs:
+      iso_url:
+        description: "Link to the Child of Light Xbox 360 ISO (direct, Google Drive or Dropbox)"
+        required: true
+        type: string
+      iso_sha256:
+        description: "Expected SHA-256 of the ISO (optional, recommended)"
+        required: false
+        type: string
+      runheal:
+        description: "Also run the Windows run-heal loop first (slower, more functions cured)"
+        required: false
+        default: true
+        type: boolean
+      heal_iters:
+        description: "Max run-heal iterations (if enabled)"
+        required: false
+        default: "6"
+        type: string
+      baseline_arm:
+        description: "Build for plain ARMv8.0 (older 2016-2017 SoCs) instead of ARMv8.2 (default, faster)"
+        required: false
+        default: false
+        type: boolean
+
+run-name: "Android: childoflight (rexauto)"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-childoflight
+  cancel-in-progress: false
+
+env:
+  # Fixed project name (rexauto requires [a-z0-9_]{1,40}).
+  REX_PROJECT: childoflight
+  # Pinned rexauto commit (verified 2026-11-13; branch arena/01a07629-rexauto).
+  REXAUTO_REF: dac49b331f2632f0b050f469e35747721300b8b2
+
+jobs:
+  # ------------------------------------------------------------------ codegen
+  recompile:
+    name: "codegen + static heal (windows)"
+    runs-on: windows-latest
+    timeout-minutes: 350
+    outputs:
+      title: ${{ steps.meta.outputs.title }}
+      title_id: ${{ steps.meta.outputs.title_id }}
+    env:
+      REXAUTO_WORK: ${{ github.workspace }}\autoports
+      REXAUTO_PORTABLE: "1"
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - name: Validate inputs
+        shell: pwsh
+        run: |
+          if ("${{ inputs.iso_url }}".Trim() -notmatch '^https?://') { Write-Host "::error::iso_url must start with http(s)://"; exit 1 }
+
+      - uses: actions/checkout@v4
+
+      - name: Checkout rexauto (pinned commit)
+        uses: actions/checkout@v4
+        with:
+          repository: Player124413/rexauto
+          ref: ${{ env.REXAUTO_REF }}
+          path: rexauto
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python deps
+        shell: pwsh
+        run: python -m pip install -q --upgrade pip pillow
+
+      - name: Toolchain
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+          if (-not (Test-Path $vcvars)) { Write-Host "::error::vcvars64.bat not found"; exit 1 }
+          "VCVARS=$vcvars" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if (-not (Get-Command clang -ErrorAction SilentlyContinue)) {
+            "CLANG=$env:ProgramFiles\LLVM\bin\clang.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "CLANGXX=$env:ProgramFiles\LLVM\bin\clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+
+      - name: Resolve pinned SDK URL
+        id: sdk
+        shell: pwsh
+        working-directory: rexauto
+        run: |
+          $url = (python tools/ci_sdk.py url)
+          "url=$url" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/cache@v4
+        id: sdk-cache
+        with:
+          path: rexauto/rexglue
+          key: rexglue-sdk-${{ hashFiles('rexauto/rexauto.py') }}-${{ steps.sdk.outputs.url }}
+
+      - name: Install ReXGlue SDK
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: rexauto
+        env:
+          REXGLUE_BUNDLE_URL: ${{ steps.sdk.outputs.url }}
+        run: python tools/ci_sdk.py install
+
+      - name: Verify SDK pin
+        shell: pwsh
+        working-directory: rexauto
+        run: python tools/ci_sdk.py verify
+
+      - name: Download game input
+        id: fetch
+        shell: pwsh
+        working-directory: rexauto
+        run: python tools/ci_fetch.py "${{ inputs.iso_url }}" "${{ runner.temp }}\input"
+
+      - name: Verify ISO SHA-256 (if provided)
+        if: inputs.iso_sha256 != ''
+        shell: pwsh
+        run: |
+          $expected = "${{ inputs.iso_sha256 }}".Trim().ToUpper()
+          $actual = (Get-FileHash -Algorithm SHA256 "${{ steps.fetch.outputs.container }}").Hash
+          Write-Host "expected: $expected"
+          Write-Host "actual:   $actual"
+          if ($actual -ne $expected) { Write-Host "::error::SHA-256 mismatch: the downloaded ISO is not the expected one"; exit 1 }
+
+      - name: Recompile (codegen + static heal + build check)
+        shell: pwsh
+        working-directory: rexauto
+        run: |
+          $args = @("${{ steps.fetch.outputs.container }}", "--name", "${{ env.REX_PROJECT }}",
+                    "--no-jumptables", "--heal-iters", "${{ inputs.heal_iters }}", "--publish-gabarito")
+          if ("${{ inputs.runheal }}" -ne "true") { $args += @("--until", "build") }
+          New-Item -ItemType Directory -Force "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}" | Out-Null
+          python rexauto.py @args 2>&1 | Tee-Object -FilePath "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\_pipeline.log"
+          exit $LASTEXITCODE
+
+      - name: Title metadata (name, Title ID, cover)
+        id: meta
+        if: always()
+        shell: pwsh
+        working-directory: rexauto
+        run: |
+          $game = "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\game"
+          $xex = Get-ChildItem $game -Recurse -Filter default.xex -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($xex) { python tools/title_meta.py "$($xex.FullName)" "${{ runner.temp }}\meta" }
+          else { python tools/title_meta.py "${{ steps.fetch.outputs.container }}" "${{ runner.temp }}\meta" }
+
+      - name: Pack generated port for the APK job
+        if: always()
+        shell: pwsh
+        run: |
+          $port = "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\port"
+          if (-not (Test-Path "$port\generated\default\sources.cmake")) { Write-Host "::error::no generated code -- codegen failed, see logs"; exit 1 }
+          $out = "${{ runner.temp }}\port-src"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          # generated/ + src/ + *.toml -- NOT the build tree
+          Copy-Item -Recurse "$port\generated" "$out\generated"
+          Copy-Item -Recurse "$port\src" "$out\src"
+          Get-ChildItem $port -File -Filter *.toml | Copy-Item -Destination $out
+          Get-ChildItem $port -File -Filter *.cmake -ErrorAction SilentlyContinue | Copy-Item -Destination $out
+          # sources.cmake is ${CMAKE_CURRENT_LIST_DIR}-relative -> relocatable as-is
+          Compress-Archive -Path "$out\*" -DestinationPath "${{ runner.temp }}\port-src.zip" -Force
+          Copy-Item "${{ runner.temp }}\meta\cover.png" "${{ runner.temp }}\cover.png" -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: port-src-${{ env.REX_PROJECT }}
+          path: |
+            ${{ runner.temp }}/port-src.zip
+            ${{ runner.temp }}/cover.png
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-windows-${{ env.REX_PROJECT }}
+          path: |
+            ${{ env.REXAUTO_WORK }}/${{ env.REX_PROJECT }}/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------- apk
+  apk:
+    name: "APK (arm64-v8a)"
+    needs: recompile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout rexauto (pinned commit)
+        uses: actions/checkout@v4
+        with:
+          repository: Player124413/rexauto
+          ref: ${{ env.REXAUTO_REF }}
+          path: rexauto
+
+      - name: Free disk space + swap (runners have ~14 GB SSD)
+        run: |
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          docker image prune -af 2>/dev/null || true
+          sudo apt-get clean
+          df -h
+          free -h
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: port-src-${{ env.REX_PROJECT }}
+          path: ${{ runner.temp }}/in
+
+      - name: Unpack port
+        run: |
+          set -euo pipefail
+          mkdir -p autoports/${{ env.REX_PROJECT }}/port
+          unzip -q "${{ runner.temp }}/in/port-src.zip" -d autoports/${{ env.REX_PROJECT }}/port
+          ls autoports/${{ env.REX_PROJECT }}/port
+          # (no `ls | head` here: with pipefail a SIGPIPE'd ls fails the step)
+          find autoports/${{ env.REX_PROJECT }}/port/generated/default -maxdepth 1 | sed -n '1,12p'
+          test -f autoports/${{ env.REX_PROJECT }}/port/src/main.cpp
+          sed -n '1,8p' autoports/${{ env.REX_PROJECT }}/port/generated/default/sources.cmake
+
+      - name: Host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-xcb-dev libwayland-dev libwayland-client0 unzip zip
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache patched ReXGlue SDK
+        uses: actions/cache@v4
+        id: sdk-cache
+        with:
+          path: rexauto/android/sdk
+          key: android-sdk-v0.10.0-${{ hashFiles('rexauto/android/patches/*.patch', 'rexauto/tools/android_sdk.sh') }}
+
+      - name: ReXGlue SDK (v0.10.0 + Android patches)
+        working-directory: rexauto
+        run: tools/android_sdk.sh
+
+      - name: Android CMake 3.31.1
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.31.1" "ndk;27.2.12479018" >/dev/null
+
+      - name: Stage assets (title DB, cover, launcher icon)
+        run: |
+          set -euo pipefail
+          mkdir -p rexauto/android/app/src/main/assets
+          cp rexauto/tools/xbox360_titles.json rexauto/android/app/src/main/assets/
+          if [ -f "${{ runner.temp }}/in/cover.png" ]; then
+            cp "${{ runner.temp }}/in/cover.png" rexauto/android/app/src/main/assets/cover.png
+            python3 -m pip install -q pillow
+            python3 rexauto/tools/android_icon.py "${{ runner.temp }}/in/cover.png" rexauto/android/app/src/main/res
+          else
+            python3 -m pip install -q pillow
+            python3 rexauto/tools/android_icon.py rexauto/gui/rexauto_icon.png rexauto/android/app/src/main/res
+          fi
+
+      - name: CI signing key (stable, from secret if present)
+        env:
+          CI_KEYSTORE_BASE64: ${{ secrets.CI_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          cd rexauto/android
+          if [ -n "${CI_KEYSTORE_BASE64:-}" ]; then
+            echo "$CI_KEYSTORE_BASE64" | base64 -d > ci-release.jks
+            echo "Using stable CI keystore from secret CI_KEYSTORE_BASE64."
+          else
+            keytool -genkeypair -v -keystore ci-release.jks -storepass rexauto -keypass rexauto \
+              -alias rexauto -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=rexauto ${{ env.REX_PROJECT }}, O=rexauto" >/dev/null 2>&1
+            echo "::warning::No CI_KEYSTORE_BASE64 secret set: a fresh keystore was generated. This APK will NOT install over previous builds (different signing key) — set the secret before the first production run. See docs/REXAUTo.md section 6."
+          fi
+
+      - name: Gradle assembleRelease
+        env:
+          REX_TITLE: ${{ needs.recompile.outputs.title }}
+          REX_TITLE_ID: ${{ needs.recompile.outputs.title_id }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.baseline_arm }}" = "true" ]; then export REX_ANDROID_BASELINE_ARM=1; fi
+          cd rexauto/android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PrexName="${{ env.REX_PROJECT }}" \
+            -PrexTitle="${REX_TITLE:-${{ env.REX_PROJECT }}}" \
+            -PrexTitleId="${REX_TITLE_ID:-00000000}" \
+            -PrexPortDir="$GITHUB_WORKSPACE/autoports/${{ env.REX_PROJECT }}/port" \
+            -PrexSdkDir="$GITHUB_WORKSPACE/rexauto/android/sdk/rexglue-sdk" \
+            -PrexVersionCode="${{ github.run_number }}" \
+            -PrexVersionName="1.${{ github.run_number }}"
+
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          APK=rexauto/android/app/build/outputs/apk/release/app-release.apk
+          unzip -l "$APK" > /tmp/apk.txt
+          grep -q "lib/arm64-v8a/libmain.so" /tmp/apk.txt || { echo "::error::libmain.so missing"; exit 1; }
+          grep -Eq "lib/arm64-v8a/librexgpu-xenos.*\.so" /tmp/apk.txt || { echo "::error::GPU plugin missing"; exit 1; }
+          grep -q "assets/xbox360_titles.json" /tmp/apk.txt || { echo "::error::title DB missing"; exit 1; }
+          grep -q "lib/arm64-v8a/libadrenotools.so" /tmp/apk.txt && grep -q "lib/arm64-v8a/libmain_hook.so" /tmp/apk.txt || echo "::warning::libadrenotools not packaged - custom GPU drivers will be unavailable"
+          cp "$APK" "${{ runner.temp }}/${{ env.REX_PROJECT }}-android.apk"
+          SIZE=$(stat -c%s "$APK")
+          {
+            echo "### ✅ ${{ needs.recompile.outputs.title }} — Android Edition"
+            echo ""
+            echo "- Title ID: \`${{ needs.recompile.outputs.title_id }}\`"
+            echo "- APK: \`${{ env.REX_PROJECT }}-android.apk\` ($((SIZE / 1048576)) MB, arm64-v8a, Vulkan)"
+            echo ""
+            echo "Install the APK, open it, tap **Choose ISO / XBLA package / default.xex** (or **Choose folder** for GoD), pick your dump — it unpacks itself. Then **Graphics & performance**, optionally **GPU driver** (import a Turnip zip on Snapdragon), then **Play**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.REX_PROJECT }}-android-apk
+          path: ${{ runner.temp }}/${{ env.REX_PROJECT }}-android.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      # complete Android project: launcher app + recompiled port sources, ready
+      # to open in Android Studio (SDK + build outputs excluded)
+      - name: Collect project sources
+        if: always()
+        run: |
+          set -uo pipefail
+          OUT="${{ runner.temp }}/source-${{ env.REX_PROJECT }}"
+          mkdir -p "$OUT"
+          rsync -a --exclude sdk --exclude build --exclude .gradle --exclude '*.jks' rexauto/android/ "$OUT/android/"
+          [ -d "autoports/${{ env.REX_PROJECT }}/port" ] && rsync -a --exclude build "autoports/${{ env.REX_PROJECT }}/port/" "$OUT/port/"
+          cp rexauto/tools/android_sdk.sh "$OUT/" && cp -r rexauto/android/patches "$OUT/android/" 2>/dev/null || true
+          cat > "$OUT/README.txt" <<EOF2
+          ${{ env.REX_PROJECT }} -- Android project sources
+
+          android/   launcher app (Gradle project)
+          port/      recompiled game (generated C++ + src + *.toml)
+          Build: run ./android_sdk.sh (needs android/sdk), then
+            cd android && ./gradlew assembleRelease -PrexName=${{ env.REX_PROJECT }} \
+              -PrexPortDir=\$PWD/../port -PrexSdkDir=\$PWD/sdk/rexglue-sdk
+          EOF2
+          du -sh "$OUT"
+
+      - name: Upload project sources
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-${{ env.REX_PROJECT }}
+          path: ${{ runner.temp }}/source-${{ env.REX_PROJECT }}
+          compression-level: 9
+          retention-days: 7
+
+      - name: Upload native build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-android-${{ env.REX_PROJECT }}
+          path: |
+            rexauto/android/app/.cxx/**/*.log
+            rexauto/android/app/.cxx/**/CMakeOutput.log
+            rexauto/android/app/.cxx/**/CMakeError.log
+          if-no-files-found: ignore
+          retention-days: 14
