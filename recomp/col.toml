@@ -1,0 +1,33 @@
+# Child of Light — XenonRecomp config (TRIAL, Fase 0).
+#
+# XEX identity (verified 2026-11-13 from the real file):
+#   Title ID 5841140D, Media ID 27A6BF29, version 0.0.0.2
+#   image base 0x82000000, image size 0xDA0000, entry 0x82945848
+#   .text 0x82170000 + 0xB62210 (11.9 MB code)
+#
+# NOTE: restgprlr/savegprlr/restfpr/savefpr/restvmx/savevmx addresses are 0
+# in this trial — XenonRecomp prints ERROR lines for them but still runs.
+# The real addresses must be found in the binary (CRT helpers) before Fase 1.
+# See rexauto / ReXGlue for how they are discovered automatically.
+[main]
+file_path = "../private/extracted/default.xex"
+out_directory_path = "ppc"
+switch_table_file_path = "../analysis/col-jumptables.toml"
+
+restgprlr_14_address = 0
+savegprlr_14_address = 0
+restfpr_14_address = 0
+savefpr_14_address = 0
+restvmx_14_address = 0
+savevmx_14_address = 0
+restvmx_64_address = 0
+savevmx_64_address = 0
+
+skip_lr = false
+skip_msr = false
+ctr_as_local = false
+xer_as_local = false
+reserved_as_local = false
+cr_as_local = false
+non_argument_as_local = false
+non_volatile_as_local = false
