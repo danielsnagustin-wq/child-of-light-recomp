@@ -1,0 +1,102 @@
+From: Aurora <aurora@child-of-light-recomp.local>
+Date: Fri, 13 Nov 2026 04:20:00 -0600
+Subject: [PATCH 16/15] recompiler: implement vavguh, vcmpequh, vcmpgtsh,
+ vcmpgtsw, vmaxsh, vminsh, vminsw (Child of Light needs)
+
+Batch B (compare/min/max/avg): 7 VMX mnemonics, 552 unrecognized sites
+in analysis/xenonrecomp-run4.log (vmaxsh 265, vminsh 92, vcmpgtsw 72,
+vcmpgtsh 82, vcmpequh 24, vavguh 16, vminsw 1; dotted variants included).
+
+- vavguh: simde_mm_avg_epu16 (same shape as existing VAVGSH).
+- vcmpequh: simde_mm_cmpeq_epi16; dotted form sets CR6 from the
+  movemask (0xFFFF when all 8 halfword lanes are true), same as
+  VCMPEQUB.
+- vcmpgtsh: simde_mm_cmpgt_epi16; dotted form as above.
+- vcmpgtsw: simde_mm_cmpgt_epi32; dotted form sets CR6 from the
+  movemask (0xF for 4 word lanes), same as VCMPEQUW.
+- vmaxsh/vminsh: simde_mm_max/min_epi16.
+- vminsw: simde_mm_min_epi32.
+
+REPAIR NOTE (coordinator): the designer's draft also contained four
+spurious cases that already exist in the tree (via wivi514 patch
+0004) and would have been duplicate-case compile errors:
+VCMPEQUW, VCMPGTUH, VMAXSW, plus a VMRGHB case with a copy-pasted
+VMINFP body. All four were removed; only the 7 genuinely missing
+cases are in this patch. The draft also used a workspace-rooted path
+(a/tools/XenonRecomp/...); fixed to the repo-rooted path.
+
+---
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -2071,6 +2071,10 @@
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_avg_epu8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VAVGUH:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_avg_epu16(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VCTSXS:
+     case PPC_INST_VCFPSXWS128:
+         printSetFlushMode(true);
+@@ -2160,6 +2164,14 @@
+             println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.u8), 0xFFFF);", cr(6), v(insn.operands[0]));
+         break;
+ 
++    case PPC_INST_VCMPEQUH:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpeq_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        // Halfword: 8 lanes x 2 bytes; movemask_epi8 is all-ones (0xFFFF)
++        // exactly when every lane is true, same as the byte case above.
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.u8), 0xFFFF);", cr(6), v(insn.operands[0]));
++        break;
++
+     case PPC_INST_VCMPEQUW:
+     case PPC_INST_VCMPEQUW128:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpeq_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+@@ -2191,6 +2203,20 @@
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpgt_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VCMPGTSH:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpgt_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        // Halfword: 8 lanes x 2 bytes; movemask_epi8 is all-ones (0xFFFF)
++        // exactly when every lane is true, same as VCMPEQUB.
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.u8), 0xFFFF);", cr(6), v(insn.operands[0]));
++        break;
++
++    case PPC_INST_VCMPGTSW:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpgt_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.setFromMask(simde_mm_load_ps({}.f32), 0xF);", cr(6), v(insn.operands[0]));
++        break;
++
+     case PPC_INST_VEXPTEFP:
+     case PPC_INST_VEXPTEFP128:
+         // TODO: vectorize
+@@ -2224,12 +2250,24 @@
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_max_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VMAXSH:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_max_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VMINFP:
+     case PPC_INST_VMINFP128:
+         printSetFlushMode(true);
+         println("\tsimde_mm_store_ps({}.f32, simde_mm_min_ps(simde_mm_load_ps({}.f32), simde_mm_load_ps({}.f32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VMINSH:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_min_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
++    case PPC_INST_VMINSW:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_min_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VMRGHB:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_unpackhi_epi8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+         break;
