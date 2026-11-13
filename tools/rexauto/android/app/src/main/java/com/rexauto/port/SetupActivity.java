@@ -2,7 +2,6 @@ package com.rexauto.port;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.res.AssetManager;
 import android.content.res.ColorStateList;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -30,12 +29,16 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * First-run router + minimal import screen. Official-port UX (v1.3): tapping
- * the icon goes straight to the game — this activity has NO home anymore.
+ * First-run router + minimal import screen. Official-port UX (v1.4): tapping
+ * the icon goes straight to the game — this activity has NO home anymore,
+ * and in full builds it shows NO screen at all.
  *
  *   - Game already installed -> launchGame() at once, no UI at all.
- *   - Full build, first run -> auto-import the bundled game.stfs, then launch.
+ *   - Full build, first run -> write the asset marker (game.stfs lives
+ *     inside the APK, read in place by the VFS — nothing is copied or
+ *     extracted, ever) and launch. No picker, no progress screen.
  *   - Normal build, first run -> one minimal screen: pick the game once.
+ *     The normal build is a development variant only.
  *
  * Knows exactly which game this APK was recompiled for (title + title ID
  * baked in at build time via BuildConfig), so it can refuse the wrong disc.
@@ -47,9 +50,6 @@ import java.util.Locale;
 public class SetupActivity extends Activity {
     private static final int REQ_PICK_FILE = 1;
     private static final int REQ_PICK_TREE = 2;
-
-    /** Full builds only (BuildConfig.FULL): the game ships inside the APK. */
-    private static final String BUNDLED_GAME_ASSET = "game.stfs";
 
     private TextView status;
     private ProgressBar progress;
@@ -85,8 +85,35 @@ public class SetupActivity extends Activity {
             finish();
             return;
         }
+        if (BuildConfig.FULL && launchBundledAsset()) {
+            // Full build with a usable bundled asset: marker written, game
+            // launched, no UI shown at all. Nothing is copied or imported.
+            finish();
+            return;
+        }
+        // Normal/dev build, or a full build whose asset is missing or for
+        // the wrong title (broken build): fall back to the manual picker.
         buildFirstRunScreen();
-        if (BuildConfig.FULL) maybeAutoImportBundledGame();
+    }
+
+    /**
+     * Full builds: the game ships inside the APK as the game.stfs asset and
+     * is read in place by the VFS (StfsAsset hands its fd to native code in
+     * PortApp.onCreate). All this does is verify the asset is really a
+     * usable STFS package for this title, write the {@code asset:game.stfs}
+     * marker into game_root.txt, and launch the game. Returns false when
+     * there is no usable bundled asset — the caller falls back to the
+     * manual import screen.
+     */
+    private boolean launchBundledAsset() {
+        if (!StfsAsset.verifyUsable(getAssets(), BuildConfig.TITLE_ID)) return false;
+        try (PrintWriter w = new PrintWriter(new FileWriter(GameFiles.configFile(this), false))) {
+            w.println(GameFiles.ASSET_PREFIX + StfsAsset.ASSET_NAME);
+        } catch (Exception e) {
+            return false;
+        }
+        launchGame();
+        return true;
     }
 
     /** The only screen this activity ever shows: pick the game, once. */
@@ -205,98 +232,6 @@ public class SetupActivity extends Activity {
             if (total > 0) progress.setProgress((int) (done * 1000 / total));
             status.setText(String.format(Locale.US, "%s  %d / %d MB", s, done >> 20, total >> 20));
         });
-    }
-
-    // --- bundled game (full builds only) ------------------------------------
-
-    private boolean hasBundledGameAsset() {
-        try {
-            for (String n : getAssets().list("")) {
-                if (BUNDLED_GAME_ASSET.equals(n)) return true;
-            }
-        } catch (Exception ignored) {
-        }
-        return false;
-    }
-
-    /**
-     * Full builds: the game ships inside the APK as the game.stfs asset. On
-     * first launch, copy it out and import it with the same STFS code as the
-     * manual picker — no manual step. In normal builds (FULL=false) or when
-     * the game is already installed this does nothing.
-     */
-    private void maybeAutoImportBundledGame() {
-        if (!BuildConfig.FULL) return;
-        if (GameFiles.hasValidGameRoot(this)) return;
-        if (!hasBundledGameAsset()) return;
-        if (busy) return;
-        setBusy(true);
-        post(getString(R.string.status_bundled_copy));
-        new Thread(() -> {
-            File tmp = new File(getExternalFilesDir(null), "game.stfs");
-            try {
-                long total;
-                try (android.content.res.AssetFileDescriptor afd =
-                        getAssets().openFd(BUNDLED_GAME_ASSET)) {
-                    total = afd.getLength();
-                }
-                long copied = 0;
-                try (InputStream in = getAssets().open(BUNDLED_GAME_ASSET,
-                        AssetManager.ACCESS_STREAMING);
-                     java.io.FileOutputStream out =
-                        new java.io.FileOutputStream(tmp)) {
-                    byte[] buf = new byte[1 << 20];
-                    int n;
-                    while ((n = in.read(buf)) > 0) {
-                        out.write(buf, 0, n);
-                        copied += n;
-                        postProgress(getString(R.string.status_bundled_copy),
-                            copied, total);
-                    }
-                }
-                File dest = GameFiles.gameDir(this);
-                File xex = importStfsFile(tmp, BUNDLED_GAME_ASSET, dest);
-                if (xex == null) {
-                    throw new Exception(
-                        getString(R.string.err_no_xex_in_stfs, BUNDLED_GAME_ASSET));
-                }
-                finish(xex);
-            } catch (Exception e) {
-                fail(e.getMessage());
-            } finally {
-                tmp.delete();
-            }
-        }, "bundled-import").start();
-    }
-
-    /**
-     * STFS (XBLA) package from a plain file. Mirror of the STFS branch of
-     * importPackage() (the manual picker), but over a File channel instead of
-     * a document Uri — the manual path is untouched.
-     */
-    private File importStfsFile(File file, String name, File dest) throws Exception {
-        java.nio.channels.FileChannel ch =
-            new java.io.FileInputStream(file).getChannel();
-        java.nio.ByteBuffer hdr = StfsExtractor.readHeader(ch);
-        if (hdr == null) {
-            ch.close();
-            return null;
-        }
-        dest.mkdirs();
-        if (StfsExtractor.volumeType(hdr) == StfsExtractor.VOLUME_SVOD) {
-            ch.close();
-            throw new Exception(getString(R.string.err_god_needs_folder, name));
-        }
-        post(getString(R.string.status_reading, name + " (STFS)"));
-        try {
-            File xex = new StfsExtractor.Stfs(ch, hdr).extractAll(dest, this::postProgress);
-            if (xex == null) {
-                throw new Exception(getString(R.string.err_no_xex_in_stfs, name));
-            }
-            return xex;
-        } finally {
-            ch.close();
-        }
     }
 
     /** ISO or bare default.xex picked with the document picker. */
