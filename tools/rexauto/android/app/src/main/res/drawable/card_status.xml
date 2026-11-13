@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tarjeta de estado del juego: superficie oscura, borde fino azul
+     lavanda al 50% y esquinas redondeadas. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#171D2E" />
+    <stroke
+        android:width="1dp"
+        android:color="#806578B8" />
+    <corners android:radius="16dp" />
+</shape>
