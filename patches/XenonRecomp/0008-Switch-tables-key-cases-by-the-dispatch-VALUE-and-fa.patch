@@ -1,0 +1,200 @@
+From 89701f8614afdc111422de2f4ae3b8441bde21c0 Mon Sep 17 00:00:00 2001
+From: wivi514 <wivi514@hotmail.com>
+Date: Mon, 3 Aug 2026 18:10:19 -0400
+Subject: [PATCH 08/14] Switch tables: key cases by the dispatch VALUE, and
+ fail honestly on a miss
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two bugs, one failure. Found by porting Asura's Wrath; see finding 38 in that
+repo's docs/xenia-capture-analysis.md for the full diagnosis.
+
+1. The case constant was hardcoded to the label's position in `labels`. That is
+   right for the address-table idiom (`lwzx; mtctr; bctr`, where the register
+   holds an index) and wrong for the computed-offset idiom (`lhzx; add; mtctr;
+   bctr`, where the register holds the BYTE OFFSET just loaded out of the
+   table — often in the same register the load was indexed by, so the index is
+   gone). Only case 0 can ever match. An in-place `rlwinm r0,r0,2` breaks the
+   address idiom the same way.
+
+   RecompilerSwitchTable now carries an optional `values` array, one constant
+   per label, parsed from `values = [...]` in the switch TOML. Absent means
+   "the register holds the index", so every table that was already correct is
+   untouched.
+
+2. `default: __builtin_unreachable();` made that mis-keying catastrophic rather
+   than merely wrong. It promises the optimiser the recovered table is complete
+   and correctly keyed, so clang drops the bounds check and emits a bare
+   `jmp *table(,%rax,8)`. An uncovered value then indexes past the end of the
+   table into the next one and transfers control into an unrelated function's
+   body — keeping the current frame, bypassing every prologue and hook, with no
+   call, no indirect dispatch and no corruption to find. It faults later
+   somewhere with no causal relation to the bug. Three sessions went into it.
+
+   A recovered table is a static-analysis result, not a fact. The default arm is
+   now PPC_SWITCH_ABORT (ppc_context.h, overridable by the port): it names the
+   dispatch address and the offending value, then traps. One bounds check per
+   dispatch buys a one-line message instead of a wild jump.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ XenonRecomp/recompiler.cpp        | 26 ++++++++++++++++++++++++--
+ XenonRecomp/recompiler_config.cpp | 18 ++++++++++++++++++
+ XenonRecomp/recompiler_config.h   | 18 ++++++++++++++++++
+ XenonUtils/ppc_context.h          | 27 +++++++++++++++++++++++++++
+ 4 files changed, 87 insertions(+), 2 deletions(-)
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index c06bb2d..511c21e 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -666,9 +666,16 @@ bool Recompiler::Recompile(
+             // case straight into __builtin_unreachable().
+             println("\tswitch ({}.u32) {{", r(switchTable->second.r));
+ 
++            // The case constant is the value the GUEST dispatches on, which is the
++            // label's index only for the address-table idiom. A computed-offset table
++            // leaves a byte offset in the register, and the generator supplies those in
++            // `values`. Getting this backwards is not a wrong branch — it is a jump into
++            // an unrelated function's body; see the default: below.
++            const auto& values = switchTable->second.values;
++
+             for (size_t i = 0; i < switchTable->second.labels.size(); i++)
+             {
+-                println("\tcase {}:", i);
++                println("\tcase {}:", values.empty() ? uint32_t(i) : values[i]);
+                 auto label = switchTable->second.labels[i];
+                 if (label < fn.base || label >= fn.base + fn.size)
+                 {
+@@ -682,8 +689,23 @@ bool Recompiler::Recompile(
+                 }
+             }
+ 
++            // NOT __builtin_unreachable(). A recovered switch table is an ASSUMPTION —
++            // the scanner may have found too few labels, or keyed the table on the wrong
++            // register — and __builtin_unreachable is a promise to the optimiser that the
++            // assumption is a fact. Given that promise, clang drops the bounds check and
++            // emits a bare `jmp *table(,%rax,8)`, so a value the table does not cover
++            // indexes PAST THE END of the table, into whatever .rodata follows: usually a
++            // neighbouring function's jump table. Control then lands mid-body in an
++            // unrelated function, still holding the CURRENT function's frame and
++            // registers. Nothing detects it — no call, no indirect dispatch, no memory
++            // corruption — and it faults later at a site with no causal relation to the
++            // bug. It cost this project three sessions of diagnosis.
++            //
++            // So fail honestly instead, and pay one bounds check per dispatch for it.
++            // PPC_SWITCH_ABORT is defined in ppc_context.h; it names the function, the
++            // dispatch address and the offending value, then traps.
+             println("\tdefault:");
+-            println("\t\t__builtin_unreachable();");
++            println("\t\tPPC_SWITCH_ABORT(0x{:X}, {}.u32);", base, r(switchTable->second.r));
+             println("\t}}");
+ 
+             switchTable = config.switchTables.end();
+diff --git a/XenonRecomp/recompiler_config.cpp b/XenonRecomp/recompiler_config.cpp
+index 81330a4..f687253 100644
+--- a/XenonRecomp/recompiler_config.cpp
++++ b/XenonRecomp/recompiler_config.cpp
+@@ -87,6 +87,24 @@ void RecompilerConfig::Load(const std::string_view& configFilePath)
+                     {
+                         switchTable.labels.push_back(*label.value<uint32_t>());
+                     }
++                    // Optional; absent means "the dispatch register holds an index"
++                    // (the address-table idiom). See RecompilerSwitchTable::values.
++                    if (auto valueArray = table["values"].as_array())
++                    {
++                        for (auto& value : *valueArray)
++                        {
++                            switchTable.values.push_back(*value.value<uint32_t>());
++                        }
++                    }
++                    if (!switchTable.values.empty() &&
++                        switchTable.values.size() != switchTable.labels.size())
++                    {
++                        fmt::println("ERROR: switch table at {:X} has {} values for {} labels; "
++                                     "they must correspond one-to-one",
++                                     *table["base"].value<uint32_t>(),
++                                     switchTable.values.size(), switchTable.labels.size());
++                        std::exit(1);
++                    }
+                     switchTables.emplace(*table["base"].value<uint32_t>(), std::move(switchTable));
+                 }
+             }
+diff --git a/XenonRecomp/recompiler_config.h b/XenonRecomp/recompiler_config.h
+index 534e503..22a761f 100644
+--- a/XenonRecomp/recompiler_config.h
++++ b/XenonRecomp/recompiler_config.h
+@@ -4,6 +4,24 @@ struct RecompilerSwitchTable
+ {
+     uint32_t r;
+     std::vector<uint32_t> labels;
++
++    // Optional case constants, one per label.
++    //
++    // A jump table is dispatched on whatever the guest leaves in `r`, and that is NOT
++    // always the label's position in `labels`. Two idioms are in the wild:
++    //
++    //   * the ADDRESS table  — `lwzx rX,rTable,rIdx; mtctr; bctr` — where `r` holds an
++    //     INDEX, so `case i:` is correct and `values` should be left empty;
++    //   * the COMPUTED-OFFSET table — `lhzx/lbzx rX,rTable,rIdx; add rCtr,rBase,rX;
++    //     mtctr; bctr` — where `r` holds the BYTE OFFSET just loaded from the table.
++    //     There `case i:` is wrong for every entry except the one whose offset happens
++    //     to be its index, i.e. only entry 0.
++    //
++    // A generator that recovers the second idiom must fill this in with the offsets it
++    // read out of the guest's table, so the emitted `switch` is keyed on the same
++    // quantity the guest dispatches on. See the safety note in recompiler.cpp for what
++    // getting this wrong used to cost.
++    std::vector<uint32_t> values;
+ };
+ 
+ struct RecompilerMidAsmHook
+diff --git a/XenonUtils/ppc_context.h b/XenonUtils/ppc_context.h
+index 777e9ff..b67d434 100644
+--- a/XenonUtils/ppc_context.h
++++ b/XenonUtils/ppc_context.h
+@@ -9,6 +9,7 @@
+ #include <cmath>
+ #include <csetjmp>
+ #include <cstdint>
++#include <cstdio> // PPC_SWITCH_ABORT's honest-failure message
+ #include <cstdlib>
+ #include <cstring>
+ 
+@@ -121,6 +122,32 @@
+ #define PPC_CALL_INDIRECT_FUNC(x) (PPC_LOOKUP_FUNC(base, x))(ctx, base)
+ #endif
+ 
++// The default arm of a recovered jump table: a dispatch value the table does not cover.
++//
++// This used to be `__builtin_unreachable()`, which is a promise to the optimiser that
++// the statically recovered table is complete and correctly keyed. Given that promise
++// the compiler removes the bounds check, so an uncovered value indexes past the end of
++// the jump table into the next one and transfers control into an unrelated function's
++// body — keeping the current frame, bypassing every prologue, hook and coverage mark.
++// The resulting fault has no causal relation to the bug.
++//
++// A table is a static-analysis RESULT, not a fact, so the default arm must fail
++// honestly. `dispatchPc` is the guest address of the `bctr`; `value` is what the guest
++// actually had. Ports may override this (a port with a crash reporter will want to
++// route it there); the fallback writes to stderr and traps.
++#ifndef PPC_SWITCH_ABORT
++#define PPC_SWITCH_ABORT(dispatchPc, value)                                             \
++    do                                                                                  \
++    {                                                                                   \
++        fprintf(stderr,                                                                 \
++                "\n[ppc] jump table at %08X: dispatch value %08X is not in the "        \
++                "recovered table.\n[ppc] The table is incomplete or keyed on the "      \
++                "wrong quantity -- re-run the table scanner.\n",                        \
++                (unsigned)(dispatchPc), (unsigned)(value));                             \
++        __builtin_trap();                                                               \
++    } while (0)
++#endif
++
+ typedef void PPCFunc(struct PPCContext& __restrict__ ctx, uint8_t* base);
+ 
+ struct PPCFuncMapping
+-- 
+2.55.0
+
