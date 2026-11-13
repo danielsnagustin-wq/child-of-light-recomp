@@ -16,12 +16,18 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // v1.4.1: super.onCreate() SIEMPRE primero. Antes el return temprano
+        // (sin game_root.txt en instalacion limpia) salia sin llamar al
+        // super y Android mataba la app con SuperNotCalledException en cada
+        // toque al icono (log-v14.txt, 9 veces). SetupActivity escribe el
+        // marcador asset:game.stfs y relanza; en la segunda entrada el root
+        // ya es valido y se entra directo al juego.
+        super.onCreate(savedInstanceState);
         if (!GameFiles.hasValidGameRoot(this)) {
             startActivity(new Intent(this, SetupActivity.class));
             finish();
             return;
         }
-        super.onCreate(savedInstanceState);
         applyOrientation();
         // Ask the OS for the sustained (thermally stable) clock profile instead of
         // the burst-then-throttle default, and never dim while playing.
