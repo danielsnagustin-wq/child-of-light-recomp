@@ -1,0 +1,26 @@
+From: Aurora <aurora@child-of-light-recomp.local>
+Date: Fri, 13 Nov 2026 04:35:00 -0600
+Subject: [PATCH 19/15] recompiler: handle dotted vcmpgtuh. (set CR6)
+
+The existing VCMPGTUH case (via wivi514 patch 0004) never handled
+the record form: 36 vcmpgtuh. sites in the game set RC but got no CR6
+update ("RC bit enabled but no comparison was generated" — the only
+warning class left in the run10 log, unchanged since run4). Add the
+same dotted handling as the neighboring VCMPEQUB/VCMPGTSH cases
+(setFromMask, 0xFFFF for 8 halfword lanes). No new mnemonic: this
+fixes an existing case.
+
+---
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -2238,6 +2238,10 @@
+ 
+     case PPC_INST_VCMPGTUH:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpgt_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        // Halfword: 8 lanes x 2 bytes; movemask_epi8 is all-ones (0xFFFF)
++        // exactly when every lane is true, same as VCMPEQUB/VCMPGTSH.
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.u8), 0xFFFF);", cr(6), v(insn.operands[0]));
+         break;
+ 
+     case PPC_INST_VCMPGTSH:
