@@ -1,0 +1,98 @@
+From: Aurora <aurora@child-of-light-recomp.local>
+Date: Fri, 13 Nov 2026 04:25:00 -0600
+Subject: [PATCH 17/15] recompiler: implement cror, crorc, ldbrx, ldux, lfdux,
+ stdux (Child of Light needs)
+
+Batch D (loads/stores/CR): 6 mnemonics, 76 unrecognized sites in
+analysis/xenonrecomp-run4.log (stdux 30, ldux 26, ldbrx 15, lfdux 1,
+cror 2, crorc 2).
+
+- cror/crorc: CR bit OR (and OR with complement), same CR_BIT_NAMES
+  shape as the existing branch-on-CR code.
+- ldbrx: byte-reversed doubleword load — one more bswap64 on top of
+  PPC_LOAD_U64, same shape as LWBRX/LHBRX one size up.
+- ldux/lfdux/stdux: update-form indexed loads/stores (EA = rA + rB,
+  write EA back to rA), same EA-then-writeback shape as LDU/LFDU/STDU.
+
+All 6 Capstone IDs verified in thirdparty/disasm/ppc-inst.h; all 6
+cases were genuinely absent from the tree (no duplicates).
+
+---
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -884,7 +884,15 @@
+     case PPC_INST_CNTLZW:
+         println("\t{0}.u64 = {1}.u32 == 0 ? 32 : __builtin_clz({1}.u32);", r(insn.operands[0]), r(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_CROR:
++        println("\t{}.{} = {}.{} | {}.{};", cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], cr(insn.operands[1] / 4), CR_BIT_NAMES[insn.operands[1] % 4], cr(insn.operands[2] / 4), CR_BIT_NAMES[insn.operands[2] % 4]);
++        break;
++
++    case PPC_INST_CRORC:
++        println("\t{}.{} = {}.{} | !{}.{};", cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], cr(insn.operands[1] / 4), CR_BIT_NAMES[insn.operands[1] % 4], cr(insn.operands[2] / 4), CR_BIT_NAMES[insn.operands[2] % 4]);
++        break;
++
+     case PPC_INST_DB16CYC:
+         // no op
+         break;
+@@ -1165,5 +1165,15 @@
+         println("{}.u32);", r(insn.operands[2]));
+         println("\t{}.u64 = __builtin_bswap64({}.u64);", r(insn.operands[0]), reserved());
+         break;
+ 
++    case PPC_INST_LDBRX:
++        // Byte-reversed doubleword load. PPC_LOAD_U64 already swaps guest
++        // big-endian to host, so the reversal the instruction asks for is one
++        // more bswap on top — same shape as LWBRX/LHBRX, one size up.
++        print("\t{}.u64 = __builtin_bswap64(PPC_LOAD_U64(", r(insn.operands[0]));
++        if (insn.operands[1] != 0)
++            print("{}.u32 + ", r(insn.operands[1]));
++        println("{}.u32));", r(insn.operands[2]));
++        break;
++
+     case PPC_INST_LDU:
+@@ -1171,7 +1171,13 @@
+         println("\t{}.u64 = PPC_LOAD_U64({});", r(insn.operands[0]), ea());
+         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
+         break;
+ 
++    case PPC_INST_LDUX:
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = PPC_LOAD_U64({});", r(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_LDX:
+         print("\t{}.u64 = PPC_LOAD_U64(", r(insn.operands[0]));
+         if (insn.operands[1] != 0)
+@@ -1193,7 +1193,14 @@
+         println("\t{}.u64 = PPC_LOAD_U64({});", f(insn.operands[0]), ea());
+         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
+         break;
+ 
++    case PPC_INST_LFDUX:
++        printSetFlushMode(false);
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = PPC_LOAD_U64({});", f(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_LFDX:
+         printSetFlushMode(false);
+         print("\t{}.u64 = PPC_LOAD_U64(", f(insn.operands[0]));
+@@ -1720,7 +1720,13 @@
+         println("\tPPC_STORE_U64({}, {}.u64);", ea(), r(insn.operands[0]));
+         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
+         break;
+ 
++    case PPC_INST_STDUX:
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U64({}, {}.u64);", ea(), r(insn.operands[0]));
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_STDX:
+         print("{}", mmioStore() ? "\tPPC_MM_STORE_U64(" : "\tPPC_STORE_U64(");
+         if (insn.operands[1] != 0)
