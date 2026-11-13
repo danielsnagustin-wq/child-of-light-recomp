@@ -5,7 +5,6 @@
     <string name="first_run_help">Añade tu copia de %1$s: toca «Elegir juego» y elige la imagen del disco (.iso), el paquete XBLA o su default.xex, o elige una carpeta ya extraída. Cualquier otro juego será rechazado.</string>
     <string name="status_reading">Leyendo %1$s…</string>
     <string name="status_copying">Copiando carpeta…</string>
-    <string name="status_bundled_copy">Copiando el juego incluido</string>
     <string name="status_copied">Copiados %1$d archivo(s)… %2$s</string>
     <string name="pick_iso">Elegir juego (ISO / XBLA / default.xex)</string>
     <string name="pick_folder">Elegir carpeta</string>
