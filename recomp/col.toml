@@ -1,27 +1,90 @@
-# Child of Light — XenonRecomp config (TRIAL, Fase 0).
+# Child of Light — XenonRecomp config (Fase 1).
 #
 # XEX identity (verified 2026-11-13 from the real file):
 #   Title ID 5841140D, Media ID 27A6BF29, version 0.0.0.2
 #   image base 0x82000000, image size 0xDA0000, entry 0x82945848
 #   .text 0x82170000 + 0xB62210 (11.9 MB code)
 #
-# NOTE: restgprlr/savegprlr/restfpr/savefpr/restvmx/savevmx addresses are 0
-# in this trial — XenonRecomp prints ERROR lines for them but still runs.
-# The real addresses must be found in the binary (CRT helpers) before Fase 1.
-# See rexauto / ReXGlue for how they are discovered automatically.
+# Helpers CRT descubiertos con find_save_restore.py (wivi514) sobre la
+# imagen plana; verificados contra las fórmulas de tamaño de Analyse().
+# Switch tables en analysis/col-jumptables.toml (192 tablas, scanner wivi514).
+# `functions` = overrides de tamaño: 25 switch-tails (fix_switch_function_bounds)
+# + 36 widen de ramas caídas (find_dropped_branches --widen, 2 rondas).
+# Estado: jump-outside 0, ramas caídas 0 (run 6).
+# Pendiente: lowerings de las instrucciones no reconocidas (ver analysis/FASE1.md).
 [main]
+functions = [
+    { address = 0x821E05E0, size = 0xC0 },
+    { address = 0x822D0DB8, size = 0x10C },
+    { address = 0x8239AEB0, size = 0x178 },
+    { address = 0x823B7DE8, size = 0x19C },
+    { address = 0x8240AAD0, size = 0xFC },
+    { address = 0x8240B5C8, size = 0x1F8 },
+    { address = 0x8240DD68, size = 0x1D0 },
+    { address = 0x827B3638, size = 0x150 },
+    { address = 0x827B3788, size = 0x2DC },
+    { address = 0x827B3AA0, size = 0x180 },
+    { address = 0x828CF5E8, size = 0x15C },
+    { address = 0x829561F0, size = 0x124 },
+    { address = 0x82956448, size = 0xD0 },
+    { address = 0x8298AB78, size = 0xE0 },
+    { address = 0x82A517C8, size = 0x1C8 },
+    { address = 0x82A51854, size = 0x13C },
+    { address = 0x82A84208, size = 0x224 },
+    { address = 0x82AF8620, size = 0x110 },
+    { address = 0x82B510A0, size = 0x138 },
+    { address = 0x82B735A8, size = 0x80 },
+    { address = 0x82C61D60, size = 0x68 },
+    { address = 0x82C61DC8, size = 0x64 },
+    { address = 0x82C61E30, size = 0x5C },
+    { address = 0x82C61E90, size = 0x198 },
+    { address = 0x82C62028, size = 0x16C },
+    { address = 0x828FDF18, size = 0x34 },
+    { address = 0x829083A8, size = 0x68 },
+    { address = 0x8292C0F8, size = 0xF4 },
+    { address = 0x8294B208, size = 0x5C4 },
+    { address = 0x8294C3C8, size = 0x850 },
+    { address = 0x8294CA7C, size = 0x19C },
+    { address = 0x8294CAB4, size = 0x164 },
+    { address = 0x82950730, size = 0xA0 },
+    { address = 0x82950830, size = 0x2D8 },
+    { address = 0x82950B18, size = 0xB8 },
+    { address = 0x82950BE0, size = 0x238 },
+    { address = 0x82951018, size = 0xB4 },
+    { address = 0x82951240, size = 0x3D4 },
+    { address = 0x829518B0, size = 0x31C },
+    { address = 0x82951BD8, size = 0x98 },
+    { address = 0x82951C24, size = 0x4C },
+    { address = 0x82951C80, size = 0xAC },
+    { address = 0x82951D38, size = 0x28C },
+    { address = 0x829521A8, size = 0x1D4 },
+    { address = 0x82956518, size = 0x25C },
+    { address = 0x8296B9D0, size = 0x68 },
+    { address = 0x82A42670, size = 0x78 },
+    { address = 0x82A45E40, size = 0x90 },
+    { address = 0x82AA1460, size = 0xF5C },
+    { address = 0x82B5F068, size = 0xF8 },
+    { address = 0x82B61288, size = 0xDC },
+    { address = 0x82B612E8, size = 0x7C },
+    { address = 0x82B61C48, size = 0x150 },
+    { address = 0x82B61DA8, size = 0x150 },
+    { address = 0x82B7B9C0, size = 0x168 },
+    { address = 0x82B7BAEC, size = 0x3C },
+    { address = 0x828FDED0, size = 0x7C },
+    { address = 0x8292C0B8, size = 0x134 },
+]
 file_path = "../private/extracted/default.xex"
 out_directory_path = "ppc"
 switch_table_file_path = "../analysis/col-jumptables.toml"
 
-restgprlr_14_address = 0
-savegprlr_14_address = 0
-restfpr_14_address = 0
-savefpr_14_address = 0
-restvmx_14_address = 0
-savevmx_14_address = 0
-restvmx_64_address = 0
-savevmx_64_address = 0
+restgprlr_14_address = 0x82A36510
+savegprlr_14_address = 0x82A364C0
+restfpr_14_address = 0x82A3773C
+savefpr_14_address = 0x82A376F0
+restvmx_14_address = 0x82A397D8
+savevmx_14_address = 0x82A39540
+restvmx_64_address = 0x82A3986C
+savevmx_64_address = 0x82A395D4
 
 skip_lr = false
 skip_msr = false
