@@ -56,6 +56,20 @@ Igual que todos los recomps de la comunidad:
   hacerse con consola modificada (RGH/JTAG) + dashboard Aurora + FTP; en una consola
   retail el XEX dentro del contenedor va cifrado y ligado a licencia.
 
+## Variantes de instalación y tamaño (v1.4)
+
+- **Full (EL producto):** el juego va dentro de la APK como asset
+  `game.stfs` (STORED, sin comprimir) y el runtime lo lee **desde dentro
+  de la APK, sin copiarlo ni extraerlo nunca** (montaje STFS sobre el fd
+  del asset; detalle en `analysis/FASE5-app.md`). Instalar → abrir →
+  jugar: no hay pantalla de importar ni picker. Tamaño total **~1,6–1,7 GB**
+  (APK ~1,68 GB; Datos solo guardados, ajustes y logs). En v1.3 el mismo
+  juego se copiaba y extraía: 1,68 GB + 1,58 GB = **3,26 GB**; eso ya no
+  se acepta.
+- **Normal (solo desarrollo):** APK ~24 MB sin el juego; en el primer
+  arranque muestra el picker una vez para importar la copia del usuario
+  (ISO / XBLA / carpeta). Total ~1,6 GB tras importar. No es el producto.
+
 ## Riesgo conocido: Mali (bloqueo nº 1)
 
 En el hardware objetivo (Helio G99 + Mali-G57 MC2), el proyecto hermano Zandatsu
