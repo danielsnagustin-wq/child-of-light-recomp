@@ -1,0 +1,39 @@
+From 0cf409884a05f38c7d7ac5d8f8dffc05e94b78c2 Mon Sep 17 00:00:00 2001
+From: wivi514 <wivi514@hotmail.com>
+Date: Tue, 14 Jul 2026 13:02:48 -0400
+Subject: [PATCH 01/14] Fix switch tables: dispatch on the low 32 bits of the
+ index register
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The emitted 'switch (rN.u64)' misses every case when guest code leaves
+stale upper bits in the 64-bit register (e.g. r11 = 0x100000000 should be
+case 0 — the hardware's rlwinm-based table indexing only reads the low
+word). Falling through to __builtin_unreachable() then jumps into garbage.
+Found running Fable 2's Lua boot scripts.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ XenonRecomp/recompiler.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index fa91527..0e351b8 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -609,7 +609,10 @@ bool Recompiler::Recompile(
+     case PPC_INST_BCTR:
+         if (switchTable != config.switchTables.end())
+         {
+-            println("\tswitch ({}.u64) {{", r(switchTable->second.r));
++            // Switch on the low 32 bits: the guest's jump-table indexing (rlwinm) only
++            // uses them, and stale upper bits in the 64-bit register would skip every
++            // case straight into __builtin_unreachable().
++            println("\tswitch ({}.u32) {{", r(switchTable->second.r));
+ 
+             for (size_t i = 0; i < switchTable->second.labels.size(); i++)
+             {
+-- 
+2.55.0
+
