@@ -2,8 +2,10 @@
 # Fase 3 (v1.2-full): variante PRIVADA con el juego adentro. Log: analysis/fase3-build-full-1.log
 #
 # SOLO local, NUNCA CI, NUNCA repo: el STFS del juego (1,5 GB, copia privada
-# del usuario) va DENTRO de la APK como asset game.stfs y el launcher lo
-# auto-importa en el primer arranque (BuildConfig.FULL=true).
+# del usuario) va DENTRO de la APK como asset game.stfs y el juego lo lee
+# DESDE DENTRO DE LA APK, sin copiarlo ni extraerlo nunca (Fase 5, v1.4:
+# PortApp/StfsAsset pasan su fd al VFS, que monta el STFS sobre el APK;
+# la auto-importacion (copia + extraccion, 3,26 GB) se elimino del todo).
 #
 # POR QUE NO COMO ASSET DE GRADLE: :app:compressReleaseAssets lee CADA asset
 # entero en memoria (readAllBytes) y con game.stfs (1,5 GB) muere siempre
@@ -12,7 +14,9 @@
 # Gradle construye la APK normal (FULL=true, sin el asset) y el STFS se
 # INYECTA despues en el ZIP como entrada STORED, se alinea y se vuelve a
 # firmar con el mismo keystore corazon. El launcher lee assets/game.stfs
-# igual que si lo hubiera empaquetado Gradle.
+# igual que si lo hubiera empaquetado Gradle. STORED es obligatorio: el
+# VFS abre el asset por fd (AssetManager.openFd / AAsset_openFileDescriptor),
+# y eso falla si la entrada va comprimida.
 set -eu
 RECOMP=/home/hatch/workspace/col-recomp
 ANDROID_DIR=$RECOMP/tools/rexauto/android
