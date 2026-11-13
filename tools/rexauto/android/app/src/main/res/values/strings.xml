@@ -2,21 +2,11 @@
 <resources>
     <!-- app_name is overridden per build from Gradle (resValue) -->
     <string name="edition">Edición Android · Title ID %1$s</string>
-    <string name="hero_tagline">Un cuento de luz bajo la aurora boreal</string>
-    <string name="section_import">Importar el juego</string>
-    <string name="section_settings">Ajustes</string>
-    <string name="section_data">Registros y datos</string>
-    <string name="status_label">Estado del juego</string>
-    <string name="setup_help">Esta app es una recompilación nativa de <b>%1$s</b> (Xbox 360, Title ID %2$s). No contiene datos del juego.\n\nAñade TU copia: toca «Elegir juego» y elige la imagen del disco (.iso), el paquete XBLA o su default.xex, o elige una carpeta ya extraída. Los archivos se descomprimen en el almacenamiento propio de la app, sin permisos especiales. Cualquier otro juego será rechazado.</string>
-    <string name="status_idle">Falta importar el juego</string>
-    <string name="status_ready">✓ Juego instalado\n%1$s</string>
+    <string name="first_run_help">Añade tu copia de %1$s: toca «Elegir juego» y elige la imagen del disco (.iso), el paquete XBLA o su default.xex, o elige una carpeta ya extraída. Cualquier otro juego será rechazado.</string>
     <string name="status_reading">Leyendo %1$s…</string>
     <string name="status_copying">Copiando carpeta…</string>
     <string name="status_bundled_copy">Copiando el juego incluido</string>
-    <string name="setup_help_full">Esta app es una recompilación nativa de <b>%1$s</b> (Xbox 360, Title ID %2$s). El juego viene incluido en la app y se importa solo la primera vez que se abre, sin permisos especiales.</string>
     <string name="status_copied">Copiados %1$d archivo(s)… %2$s</string>
-    <string name="status_done">Juego instalado</string>
-    <string name="play">▶  JUGAR</string>
     <string name="pick_iso">Elegir juego (ISO / XBLA / default.xex)</string>
     <string name="pick_folder">Elegir carpeta</string>
     <string name="graphics">Gráficos y rendimiento</string>
