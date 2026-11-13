@@ -1,0 +1,162 @@
+From 981afe98db65fbe7a60ccb1bf6a2d677f622fe77 Mon Sep 17 00:00:00 2001
+From: wivi514 <wivi514@hotmail.com>
+Date: Tue, 4 Aug 2026 14:12:30 -0400
+Subject: [PATCH 11/14] Implement the 7 vector/load/store mnemonics Case Zero
+ needs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Dead Rising 2: Case Zero hit 42 unrecognized-instruction sites across six
+mnemonics. An unrecognized instruction is not a build failure: Recompile()
+returns false, the recompiler prints a line, and then emits *nothing at all*
+for that instruction — the guest op silently becomes a no-op in the generated
+C++. So these are wrong-execution traps, not TODOs.
+
+  lhbrx     30 sites   byte-reversed halfword load; mirrors LWBRX one size down
+  stfsux     5 sites   indexed update store; operand shape follows LFSUX
+  vsubuws    4 sites   32-bit unsigned saturating subtract
+  vspltish   1 site    splat immediate signed halfword
+  vpkuwum    1 site    modulo word->halfword pack
+  vadduhs    1 site    16-bit unsigned saturating add
+
+A seventh fix came out of the same work. VADDUWS was already implemented, but
+it emitted simde_mm_adds_epu32 — which does not exist. No SSE level has a
+32-bit unsigned saturating add and simde does not synthesise one, so any title
+using vadduws produced C++ that failed to compile. Case Zero has one such site,
+which would have blocked its first compile. Both 32-bit saturating cases now
+use algebraic identities instead:
+
+  vadduws:  a + min_epu32(b, ~a)        overflow iff b > ~a, and then a+~a = -1
+  vsubuws:  max_epu32(a, b) - b         a-b when a >= b, 0 otherwise
+
+Verified with a differential test against scalar references written from the
+PPC definitions, modelling XenonRecomp's fully-reversed host vector layout:
+200,153 cases (exhaustive over saturation-boundary word pairs, plus 200k random
+and mixed-edge vectors) with zero failures under -O2, -msse4.1, -mavx2 and -O0.
+Negative controls confirm the test discriminates — unswapping vpkuwum's
+operands fails 199,957 cases and dropping vsubuws's clamp fails 184,854.
+
+vpkuwum takes vB as the first packus argument and vA as the second, for the
+same whole-vector-reversal reason as the existing VPKSHUS/VPKUWUS cases.
+
+Case Zero now recompiles with zero unrecognized instructions.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ XenonRecomp/recompiler.cpp | 59 +++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 58 insertions(+), 1 deletion(-)
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index 385f593..d77e311 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -1252,6 +1252,17 @@ bool Recompiler::Recompile(
+         println("{}.u32));", r(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_LHBRX:
++        // Byte-reversed halfword load. PPC_LOAD_U16 already swaps guest big-endian
++        // to host, so the reversal the instruction asks for is one more bswap on
++        // top — same shape as LWBRX below, one size down. bswap16 yields uint16_t,
++        // so assigning to .u64 zero-extends, which is what lhbrx specifies.
++        print("\t{}.u64 = __builtin_bswap16(PPC_LOAD_U16(", r(insn.operands[0]));
++        if (insn.operands[1] != 0)
++            print("{}.u32 + ", r(insn.operands[1]));
++        println("{}.u32));", r(insn.operands[2]));
++        break;
++
+     case PPC_INST_LHZ:
+         print("\t{}.u64 = PPC_LOAD_U16(", r(insn.operands[0]));
+         if (insn.operands[2] != 0)
+@@ -1749,6 +1760,17 @@ bool Recompiler::Recompile(
+         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
+         break;
+ 
++    case PPC_INST_STFSUX:
++        // Indexed update form of STFSU: EA = rA + rB, store, then rA = EA.
++        // Operand shape follows LFSUX (frS, rA, rB) rather than STFSU's
++        // (frS, displacement, rA) — the updated register is operands[1] here.
++        printSetFlushMode(false);
++        println("\t{}.f32 = float({}.f64);", temp(), f(insn.operands[0]));
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U32({}, {}.u32);", ea(), temp());
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_STFSX:
+         printSetFlushMode(false);
+         println("\t{}.f32 = float({}.f64);", temp(), f(insn.operands[0]));
+@@ -1982,12 +2004,26 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_add_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VADDUHS:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_adds_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VADDUWM:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_add_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
+     case PPC_INST_VADDUWS:
+-        println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_adds_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        // There is no simde_mm_adds_epu32 — no SSE level has a 32-bit unsigned
++        // saturating add, and simde does not synthesise one. This case used to
++        // emit that name anyway, so any title using vadduws produced C++ that
++        // failed to *compile*; Case Zero has one such site.
++        //
++        // Saturating identity: a + b overflows exactly when b > ~a, and in that
++        // case the result is 0xFFFFFFFF == a + ~a. So clamping the addend to ~a
++        // gives the saturated answer with no compare or blend:
++        //     a + min_epu32(b, ~a)
++        // min_epu32 is SSE4.1, which VPKUWUS already relies on.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_add_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_min_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_xor_si128(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_set1_epi32(-1)))));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]), v(insn.operands[1]));
+         break;
+ 
+     case PPC_INST_VAND:
+@@ -2366,6 +2402,16 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packus_epi16(simde_mm_min_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_set1_epi16(0xFF)), simde_mm_min_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_set1_epi16(0xFF))));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_VPKUWUM:
++    case PPC_INST_VPKUWUM128:
++        // Modulo pack: keep the low halfword of each word, no saturation.
++        // packus_epi32 saturates, so mask to 0xFFFF first — every masked value is
++        // then non-negative and already in range, so the saturating pack
++        // reproduces plain truncation exactly. Operand order swapped (vB first)
++        // for the same whole-vector-reversal reason as VPKSHUS above.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_packus_epi32(simde_mm_and_si128(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_set1_epi32(0xFFFF)), simde_mm_and_si128(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_set1_epi32(0xFFFF))));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
+     case PPC_INST_VPKUWUS:
+     case PPC_INST_VPKUWUS128:
+         // Same unsigned-clamp-then-signed-pack trick as VPKUHUS, one size up.
+@@ -2459,6 +2505,10 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_set1_epi8(char(0x{:X})));", v(insn.operands[0]), insn.operands[1]);
+         break;
+ 
++    case PPC_INST_VSPLTISH:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_set1_epi16(short(0x{:X})));", v(insn.operands[0]), insn.operands[1]);
++        break;
++
+     case PPC_INST_VSPLTISW:
+     case PPC_INST_VSPLTISW128:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_set1_epi32(int(0x{:X})));", v(insn.operands[0]), insn.operands[1]);
+@@ -2519,6 +2569,13 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_sub_epi16(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VSUBUWS:
++        // No 32-bit unsigned saturating subtract exists in SSE either (see
++        // VADDUWS above for the add side). Clamping at zero is a max away:
++        // max_epu32(a, b) - b is a - b when a >= b, and 0 when a < b.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_sub_epi32(simde_mm_max_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VUPKD3D128:
+         // TODO: vectorize somehow?
+         // NOTE: handling vector reversal here too
+-- 
+2.55.0
+
