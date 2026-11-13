@@ -1,0 +1,65 @@
+From 8d5fa093c6d565cbd84977e8ee4aa8e180bbe459 Mon Sep 17 00:00:00 2001
+From: wivi514 <wivi514@hotmail.com>
+Date: Mon, 3 Aug 2026 00:03:13 -0400
+Subject: [PATCH 06/14] recompiler: delete stale ppc_recomp.N.cpp files past
+ the last emitted index
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A run that emits fewer TUs than the previous one (function count shrank —
+here, seven size overrides merged split switch-case fragments back into their
+parents) leaves the previous run's trailing TU files on disk. Consumer build
+systems glob the output directory, so every function in a stale trailing TU
+is defined twice: 44 duplicate-symbol link errors on Asura's Wrath, and
+nothing in the recompiler's own output hints at the cause (the stale file's
+content is internally consistent — only its overlap with the new layout is
+wrong). Remove trailing files until the first index that doesn't exist.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ XenonRecomp/recompiler.cpp | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index 80a7a9f..c06bb2d 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -256,6 +256,7 @@ void Recompiler::Analyse()
+     }
+ 
+     std::sort(functions.begin(), functions.end(), [](auto& lhs, auto& rhs) { return lhs.base < rhs.base; });
++
+ }
+ 
+ bool Recompiler::Recompile(
+@@ -2919,6 +2920,26 @@ void Recompiler::Recompile(const std::filesystem::path& headerFilePath)
+     }
+ 
+     SaveCurrentOutData();
++
++    // A run that emits fewer TUs than the previous one (function count shrank,
++    // e.g. size overrides merged split functions) leaves the previous run's
++    // trailing ppc_recomp.N.cpp files on disk. Build systems glob the output
++    // directory, so those stale files re-define every function they contain —
++    // 44 duplicate-symbol link errors the first time this happened. Delete
++    // anything past the last index we actually wrote.
++    {
++        std::string directoryPath = config.directoryPath;
++        if (!directoryPath.empty())
++            directoryPath += "/";
++
++        for (size_t i = cppFileIndex; ; i++)
++        {
++            auto stalePath = fmt::format("{}{}/ppc_recomp.{}.cpp", directoryPath, config.outDirectoryPath, i);
++            if (!std::filesystem::remove(stalePath))
++                break;
++            fmt::println("Removed stale {}", stalePath);
++        }
++    }
+ }
+ 
+ void Recompiler::SaveCurrentOutData(const std::string_view& name)
+-- 
+2.55.0
+
