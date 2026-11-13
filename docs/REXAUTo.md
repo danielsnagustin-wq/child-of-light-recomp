@@ -124,15 +124,27 @@ Ese paso genera el keystore **de nuevo en cada run, sobre un checkout limpio, si
 **Cómo lo corrige nuestro workflow adaptado:** keystore estable vía secretos de GitHub Actions:
 - Si existen los secretos `CI_KEYSTORE_BASE64` (keystore en base64) y `CI_KEYSTORE_PASSWORD`, se restaura ese keystore y se firma con él → la misma clave en todos los runs, las APK actualizan conservando datos.
 - Si no existen, se genera uno nuevo y el workflow emite una advertencia explícita (`::warning::`) de que esa APK no actualizará sobre builds anteriores.
-- **TODO (una sola vez, antes del primer run de producción):** generar el keystore una vez y guardarlo como secreto. Comando (las contraseñas son las mismas que usa rexauto en su YAML, ya públicas: `rexauto`):
+- **HECHO 2026-11-13 (llave personalizada con corazón):** keystore generado y
+  guardado como secreto. Alias `childoflight<3`, `CN="Child of Light <3",
+  OU=Aurora, O=Child of Light Recomp`, RSA 4096, SHA384withRSA, válido
+  hasta 2054-03-31, SHA-256 `8ea1eb60…`. Comando (el `<` se escapa como
+  `\<`, si no keytool lo rechaza; la contraseña sigue siendo `rexauto`,
+  la misma que usa rexauto en su YAML, ya pública):
   ```bash
   keytool -genkeypair -v -keystore ci-release.jks -storepass rexauto -keypass rexauto \
-    -alias rexauto -keyalg RSA -keysize 2048 -validity 10000 \
-    -dname "CN=rexauto childoflight, O=rexauto"
+    -alias 'childoflight<3' -keyalg RSA -keysize 4096 -sigalg SHA384withRSA -validity 10000 \
+    -dname 'CN=Child of Light \<3, OU=Aurora, O=Child of Light Recomp'
   base64 -w0 ci-release.jks   # → secreto CI_KEYSTORE_BASE64
   # CI_KEYSTORE_PASSWORD = rexauto
   ```
-  Guardar el `ci-release.jks` original en un lugar seguro (si se pierde, las APK futuras ya no podrán actualizar sobre las anteriores).
+  Secretos `CI_KEYSTORE_BASE64` + `CI_KEYSTORE_PASSWORD` creados 2026-11-13
+  03:18; `CI_KEYSTORE_BASE64` actualizado a la llave del corazón 03:24
+  (confirmado en la lista de secretos del repo). El `ci-release.jks`
+  original vive en `private/` (respaldo local, nunca se sube al repo).
+  Respaldos sin usar: llave bonita sin corazón (alias `childoflight`,
+  SHA-256 `35cd9717…`) y llave genérica rexauto (SHA-256 `8413a761…`).
+  Guardar el `ci-release.jks` original en un lugar seguro (si se pierde,
+  las APK futuras ya no podrán actualizar sobre las anteriores).
 
 ---
 
@@ -141,11 +153,11 @@ Ese paso genera el keystore **de nuevo en cada run, sobre un checkout limpio, si
 | # | Decisión | Estado |
 |---|---|---|
 | 1 | **URL de la ISO** (directa / Drive / Dropbox) + SHA-256 opcional | Pendiente del usuario. El workflow la pide como input `iso_url`; sin ella no corre. |
-| 2 | **Keystore CI** (secretos `CI_KEYSTORE_BASE64` + `CI_KEYSTORE_PASSWORD`) | Pendiente; ver §6. Sin secretos, cada APK firma con clave nueva. |
+| 2 | **Keystore CI** (secretos `CI_KEYSTORE_BASE64` + `CI_KEYSTORE_PASSWORD`) | **RESUELTO 2026-11-13:** llave personalizada `childoflight<3` (RSA 4096, SHA-256 `8ea1eb60…`), secretos creados 03:18 y `CI_KEYSTORE_BASE64` actualizado a la llave del corazón 03:24. Ver §6. |
 | 3 | **Repositorio privado vs público** | **RESUELTO 2026-11-13 (decisión del usuario): PÚBLICO** — para tener minutos ilimitados + runners grandes. El guard que fallaba si el repo no era privado se quitó del workflow. Modelo: código público, APK **nunca** como Release público, solo artefacto de Actions con retención de 7 días (ver `docs/DMCA.md`). |
 | 4 | **ReXGlue v0.10.0 (pin de rexauto) vs v0.10.1** | Pin **v0.10.0** (lo que usa rexauto, verificado por hash). La v0.10.1 (06-11-2026) trae fix de vídeo `vpkuwus`/`vpkuhus` (relevante para las cinemáticas de CoL) e input de Xbox 360, pero rexauto se niega a correr con otro SDK; subir de versión exige cambiar el pin en rexauto y re-verificar. NO subir en silencio. |
 | 5 | **`runheal` en Android** | rexauto lo pone en `false` por defecto en Android (en PC es `true`). Nuestra adaptación lo pone en **`true` + `heal_iters: 6`**: sin gabarito previo de CoL, el heal en Windows es la única fuente de curas. Es más lento, pero es lo que hace converger un título nuevo. |
-| 6 | **Jump tables sin IDA en CI** | El workflow CI salta jumptables siempre (`--no-jumptables`). Opciones: (a) detector propio de RaymanOriginsRecomp (173 tablas en Origins, hay que re-ejecutarlo sobre el XEX de CoL); (b) scanner de wivi514 (no re-verificado en la última ronda); (c) `XenonAnalyse` de VirtuaQuest (solo README leído, código sin auditar). **Ninguna probada con CoL.** TODO. |
+| 6 | **Jump tables sin IDA en CI** | **RESUELTO 2026-11-13 (Fase 0):** scanner de wivi514 (`find_jumptables.py`) sobre la imagen plana del XEX de CoL con el rango real de .text → **192 tablas (98 absolute + 44 offset16 + 50 offset8), 4.380 labels, 0 sin resolver** (`analysis/col-jumptables.toml`). XenonAnalyse stock da 0 (fallo de detección conocido). Ver `analysis/FASE0.md`. |
 | 7 | **Title ID** | **CONFIRMADO 2026-11-13 por la carpeta real en Drive**: `5841140D` (`Child of Light (World) (XBLA)/5841140D/000D0000/FB24D252…`, 1.585.451.008 B, MD5 `ad88061a06fba28e3434945f37cb3d57`). |
 | 8 | **DLCs de CoL** | No verificado cómo se añaden DLCs STFS adicionales al mismo Title ID en el launcher de rexauto (importa UN paquete XBLA por título). TODO. |
 | 9 | **Igniculus** | El gamepad de rexauto es genérico; el control de Igniculus (stick derecho, como en Vita) no existe. **Verificado en la segunda ronda (2026-11-13): la versión 360 SÍ permite controlar a Igniculus con el 2º mando** (stick derecho + mantener LT, 5 fuentes). Falta implementarlo en el port. |
