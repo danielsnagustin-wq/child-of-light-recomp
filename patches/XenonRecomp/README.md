@@ -22,6 +22,7 @@ XenonRecomp limpio (HEAD de hedge-dev, sin commits desde 2025-08-04).
 | 0017 | cror, crorc, ldbrx, ldux, lfdux, stdux (CoL, lote D) | 76 sitios; update-form indexados + CR bit OR (run 9: 3.556 → 3.480) |
 | 0018 | vslh, vsrah, vsrh, vsrab, vrlh (CoL, lote A) | 3.480 sitios; bucles por elemento según plantillas VSLB/VSLW/VSRAW (run 10: 3.480 → **0**) |
 | 0019 | vcmpgtuh. → CR6 (fix de caso existente, no mnemónico nuevo) | El caso VCMPGTUH (0004) no manejaba la forma con punto: 36 avisos RC-bit; añadido `setFromMask` 0xFFFF (run 11: avisos 36 → 0) |
+| 0020 | `__imp__` imports → `PPC_FUNC_IMPL` (extern "C") en ppc_recomp_shared.h | El runtime define los imports con C linkage (REX_EXPORT); el header los declaraba C++ y el link fallaba en los 40 imports referenciados (Fase 2, build 7). Aplicado a mano a los dos ppc_recomp_shared.h (recomp/ppc/ + port copy); `git apply --check` OK contra el checkout |
 
 ## NO incluidos (de momento)
 
