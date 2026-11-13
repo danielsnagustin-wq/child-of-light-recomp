@@ -1,0 +1,39 @@
+From: Aurora <aurora@child-of-light-recomp.local>
+Date: Fri, 13 Nov 2026 13:45:00 -0600
+Subject: [PATCH 20] recompiler: declare __imp__ imports extern "C" in
+ ppc_recomp_shared.h
+
+Import stubs (__imp__RtlEnterCriticalSection, __imp__KeTlsAlloc, ...)
+are defined by the ReXGlue runtime with C linkage (REX_EXPORT, which
+expands to extern "C"). The shared header declared every symbol with
+PPC_EXTERN_FUNC (plain `extern`, C++ linkage), so the linker looked
+for the mangled name and failed on all 40 referenced imports
+("ld.lld: error: undefined symbol: __imp__RtlEnterCriticalSection
+(PPCContext&, unsigned char*) ... did you mean: extern "C"
+__imp__RtlEnterCriticalSection, defined in librexruntime.so" —
+Fase 2 build 7). Emit PPC_FUNC_IMPL (extern "C") for symbols whose
+name starts with __imp__; regular sub_* functions keep
+PPC_EXTERN_FUNC (their weak aliases resolve through the C-linkage
+__imp__sub_* bodies the TUs define).
+
+---
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -2584,8 +2584,16 @@
+         println("#include \"ppc_config.h\"");
+         println("#include \"ppc_context.h\"\n");
+ 
++        // Import stubs are defined by the runtime with C linkage
++        // (REX_EXPORT); a C++-linkage declaration mangles the name and
++        // the link fails. Regular functions keep PPC_EXTERN_FUNC.
+         for (auto& symbol : image.symbols)
+-            println("PPC_EXTERN_FUNC({});", symbol.name);
++        {
++            if (symbol.name.rfind("__imp__", 0) == 0)
++                println("PPC_FUNC_IMPL({});", symbol.name);
++            else
++                println("PPC_EXTERN_FUNC({});", symbol.name);
++        }
+ 
+         SaveCurrentOutData("ppc_recomp_shared.h");
+     }
