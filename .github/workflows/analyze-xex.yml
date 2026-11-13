@@ -1,0 +1,159 @@
+name: Analyze XEX (Phase 0)
+
+# Fase 0: analiza el default.xex de Child of Light (Xbox 360) con XenonAnalyse
+# y genera un informe de complejidad. No construye nada jugable.
+#
+# Uso: Actions -> Analyze XEX (Phase 0) -> Run workflow
+#   xex_url:    URL de descarga DIRECTA del default.xex desencriptado (obligatorio).
+#               El archivo nunca se commitea: solo vive en el runner y se borra al
+#               terminar el job. Un enlace normal de Google Drive NO vale (no es
+#               descarga directa); usa un enlace directo o un hosting con URL firmada.
+#   xex_sha256: SHA-256 del XEX (opcional, recomendado) para verificar la descarga.
+#
+# Comandos reales, del README de XenonRecomp:
+#   https://github.com/hedge-dev/XenonRecomp
+#     - Build: CMake >= 3.20 y Clang >= 18; clonar con --recursive (submódulos).
+#     - XenonAnalyse [input XEX file path] [output jump table TOML file path]
+#     - XenonRecomp [input TOML file path] [input PPC context header file path]
+#   El README no documenta la ruta exacta del binario XenonAnalyse tras el build,
+#   así que el workflow lo localiza con `find` y falla con un mensaje claro si no
+#   aparece. La ruta del binario NO se inventa.
+
+on:
+  workflow_dispatch:
+    inputs:
+      xex_url:
+        description: "Direct download URL of the decrypted default.xex (private)"
+        required: true
+        type: string
+      xex_sha256:
+        description: "Expected SHA-256 of the XEX (optional, recommended)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: XenonAnalyse
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang python3 curl
+          cmake --version
+          clang --version
+          python3 --version
+
+      - name: Check Clang version (>= 18 required by XenonRecomp)
+        run: |
+          CLANG_MAJOR="$(clang --version | head -1 | sed -E 's/.* ([0-9]+)\..*/\1/')"
+          echo "clang major version: $CLANG_MAJOR"
+          if [ "$CLANG_MAJOR" -lt 18 ]; then
+            echo "::error::XenonRecomp requires Clang >= 18, found $CLANG_MAJOR"
+            exit 1
+          fi
+
+      - name: Clone XenonRecomp (recursive, it has submodules)
+        run: |
+          git clone --recursive https://github.com/hedge-dev/XenonRecomp.git tools/XenonRecomp
+          cd tools/XenonRecomp
+          git rev-parse HEAD
+
+      - name: Build XenonRecomp
+        run: |
+          cmake -S tools/XenonRecomp -B tools/XenonRecomp/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -G Ninja
+          cmake --build tools/XenonRecomp/build --parallel 2
+
+      - name: Locate XenonAnalyse binary
+        id: locate
+        run: |
+          # The XenonRecomp README does not document the exact output path of the
+          # XenonAnalyse binary, so locate it instead of guessing.
+          BIN="$(find tools/XenonRecomp/build -type f -name 'XenonAnalyse' -executable | head -1)"
+          if [ -z "$BIN" ]; then
+            echo "::error::XenonAnalyse binary not found after build. Contents of build dir:"
+            find tools/XenonRecomp/build -maxdepth 3 -type f | head -50
+            exit 1
+          fi
+          echo "Found XenonAnalyse at: $BIN"
+          echo "bin=$BIN" >> "$GITHUB_OUTPUT"
+
+      - name: Download the XEX (private URL, never committed)
+        env:
+          XEX_URL: ${{ inputs.xex_url }}
+        run: |
+          mkdir -p private analysis
+          curl -fL --retry 3 -o private/default.xex "$XEX_URL"
+          ls -lh private/default.xex
+          file private/default.xex || true
+
+      - name: Verify XEX SHA-256 (if provided)
+        if: inputs.xex_sha256 != ''
+        env:
+          EXPECTED_SHA256: ${{ inputs.xex_sha256 }}
+        run: |
+          ACTUAL_SHA256="$(sha256sum private/default.xex | cut -d' ' -f1)"
+          echo "expected: $EXPECTED_SHA256"
+          echo "actual:   $ACTUAL_SHA256"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::SHA-256 mismatch: the downloaded XEX is not the dumped one"
+            exit 1
+          fi
+
+      - name: Run XenonAnalyse
+        id: analyse
+        run: |
+          # Real invocation from the XenonRecomp README:
+          #   XenonAnalyse [input XEX file path] [output jump table TOML file path]
+          # The output TOML contains the detected jump tables. The XEX must be
+          # decrypted; an encrypted XEX makes XenonAnalyse fail here.
+          set +e
+          "${{ steps.locate.outputs.bin }}" private/default.xex analysis/switch_tables.toml \
+            > analysis/xenonanalyse.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          echo "---- XenonAnalyse log ----"
+          cat analysis/xenonanalyse.log
+          echo "---- end of log ----"
+          if [ ! -s analysis/switch_tables.toml ]; then
+            echo "::warning::switch_tables.toml is missing or empty (0 jump tables detected, or XenonAnalyse failed)"
+          fi
+
+      - name: Generate analysis report
+        env:
+          XENONANALYSE_EXIT_CODE: ${{ steps.analyse.outputs.exit_code }}
+        run: |
+          python3 tools/generate_analysis_report.py \
+            --xex private/default.xex \
+            --switch-tables analysis/switch_tables.toml \
+            --log analysis/xenonanalyse.log \
+            --exit-code "$XENONANALYSE_EXIT_CODE" \
+            --output analysis/report.md
+          echo "---- report.md ----"
+          cat analysis/report.md
+
+      - name: Clean up the XEX before uploading the artifact
+        if: always()
+        run: |
+          # The game file must never leave the runner inside an artifact.
+          rm -f private/default.xex
+          ls -R analysis
+
+      - name: Upload analysis artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: col-xex-analysis
+          path: analysis/
+          retention-days: 30
