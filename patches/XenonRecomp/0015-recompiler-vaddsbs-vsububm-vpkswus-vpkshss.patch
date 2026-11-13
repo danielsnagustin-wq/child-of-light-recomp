@@ -1,0 +1,87 @@
+From: Aurora <aurora@child-of-light-recomp.local>
+Date: Fri, 13 Nov 2026 04:15:00 -0600
+Subject: [PATCH 15/15] recompiler: implement vaddsbs, vsububm, vpkswus128,
+ vpkshss, vpkshss128 (Child of Light needs)
+
+Batch C (arith/pack): 5 VMX mnemonics, 52 unrecognized sites in
+analysis/xenonrecomp-run4.log (vaddsbs 26, vpkswus128 12, vsububm 7,
+vpkshss 6, vpkshss128 1).
+
+- vaddsbs: simde_mm_adds_epi8 (signed byte saturating add).
+- vsububm: simde_mm_sub_epi8 (unsigned byte modulo subtract).
+- vpkswus / vpkswus128: simde_mm_packus_epi32. The source is signed,
+  so packus_epi32 saturates exactly to [0, 0xFFFF] with no clamp
+  (unlike VPKUWUS, whose unsigned source needs min_epu32 first).
+  The plain vpkswus has 0 sites in run4 but shares the lowering.
+- vpkshss / vpkshss128: simde_mm_packs_epi16 (signed halfword to
+  signed byte, saturating to [-128, 127]).
+- Pack cases copy the existing operand swap (vB first) from
+  VPKSHUS/VPKSWSS/VPKUWUS, for the same whole-vector-reversal reason.
+
+All 5 Capstone IDs verified in thirdparty/disasm/ppc-inst.h +
+ppc-dis.c; all 4 simde intrinsics verified as real functions in the
+vendored simde headers (sse2.h: adds_epi8, packs_epi16, sub_epi8;
+sse4.1.h: packus_epi32, already relied on by VPKUWUS).
+
+NOTE: pack lane order is inherited from the existing pack cases
+(VPKSHUS/VPKSWSS/VPKUHUS/VPKUWUM/VPKUWUS); it was not independently
+re-derived from the vector storage layout. Worth a real vector test
+before calling these pack lowerings proven.
+
+---
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -1997,6 +1997,10 @@
+         println("\tsimde_mm_store_ps({}.f32, simde_mm_add_ps(simde_mm_load_ps({}.f32), simde_mm_load_ps({}.f32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VADDSBS:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.s8, simde_mm_adds_epi8(simde_mm_load_si128((simde__m128i*){}.s8), simde_mm_load_si128((simde__m128i*){}.s8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VADDSHS:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.s16, simde_mm_adds_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+@@ -2350,6 +2350,13 @@
+         }
+         break;
+ 
++    case PPC_INST_VPKSHSS:
++    case PPC_INST_VPKSHSS128:
++        // Operand order swapped (vB first) for the same whole-vector-reversal
++        // reason as VPKSHUS above.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.s8, simde_mm_packs_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
+     case PPC_INST_VPKSHUS:
+     case PPC_INST_VPKSHUS128:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packus_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+@@ -2362,6 +2362,16 @@
+         println("\tsimde_mm_store_si128((simde__m128i*){}.s16, simde_mm_packs_epi32(simde_mm_load_si128((simde__m128i*){}.s32), simde_mm_load_si128((simde__m128i*){}.s32)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_VPKSWUS:
++    case PPC_INST_VPKSWUS128:
++        // Signed word -> unsigned halfword: simde_mm_packus_epi32 already
++        // saturates signed 32-bit to [0, 0xFFFF] (negatives to 0), so no
++        // clamp is needed -- unlike VPKUWUS, whose unsigned source must be
++        // clamped first. Operand order swapped (vB first) for the same
++        // whole-vector-reversal reason as VPKSHUS above.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_packus_epi32(simde_mm_load_si128((simde__m128i*){}.s32), simde_mm_load_si128((simde__m128i*){}.s32)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
+     case PPC_INST_VPKUHUS:
+     case PPC_INST_VPKUHUS128:
+         // packus_epi16 saturates a *signed* source, so clamp the unsigned
+@@ -2529,6 +2529,10 @@
+         }
+         break;
+ 
++    case PPC_INST_VSUBUBM:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_sub_epi8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VSUBUBS:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_subs_epu8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
