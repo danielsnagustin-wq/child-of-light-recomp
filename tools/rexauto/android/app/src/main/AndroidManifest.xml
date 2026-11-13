@@ -12,6 +12,7 @@
     <!-- Android 12+: declare game mode support so performance mode is offered. -->
     <application
         android:allowBackup="false"
+        android:name=".PortApp"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -25,7 +26,7 @@
             android:name=".SetupActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="false"
-            android:screenOrientation="fullUser" />
+            android:screenOrientation="sensorLandscape" />
 
         <activity
             android:name=".MainActivity"
