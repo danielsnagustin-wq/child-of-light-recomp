@@ -332,6 +332,9 @@ jobs:
           if [ -n "${CI_KEYSTORE_BASE64:-}" ]; then
             echo "$CI_KEYSTORE_BASE64" | base64 -d > ci-release.jks
             echo "Using stable CI keystore from secret CI_KEYSTORE_BASE64."
+            # The secret keystore's alias is childoflight<3 (heart keystore,
+            # 2026-11-13); upstream build.gradle.kts expects "rexauto".
+            sed -i 's/keyAlias = "rexauto"/keyAlias = "childoflight<3"/' app/build.gradle.kts
           else
             keytool -genkeypair -v -keystore ci-release.jks -storepass rexauto -keypass rexauto \
               -alias rexauto -keyalg RSA -keysize 2048 -validity 10000 \
