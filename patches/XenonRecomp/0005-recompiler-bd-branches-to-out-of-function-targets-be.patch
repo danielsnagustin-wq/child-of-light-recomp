@@ -1,0 +1,118 @@
+From 2314613d2c0676a192d3620a5c81275a01d3b54d Mon Sep 17 00:00:00 2001
+From: wivi514 <wivi514@hotmail.com>
+Date: Sun, 2 Aug 2026 23:55:34 -0400
+Subject: [PATCH 05/14] recompiler: bd* branches to out-of-function targets
+ become tail calls; fix __int128 cast syntax
+
+Two first-compile failures from the Asura's Wrath image:
+
+- bdnzf sites can target a label in a sibling function (CRT memcpy-family
+  multi-entry code). All decrement-CTR branches now go through a shared
+  printDecrementCtrBranch helper that emits call+return for out-of-bounds
+  targets, exactly like printConditionalBranch already did for bc forms.
+  Upstream's bdz/bdnz had the same latent hole.
+- `unsigned __int128(x)` is not a valid functional cast (two-word type name);
+  mulhd/mulhdu now emit the single-token __int128_t/__uint128_t forms.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ XenonRecomp/recompiler.cpp | 43 +++++++++++++++++++++++++-------------
+ 1 file changed, 29 insertions(+), 14 deletions(-)
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index cda7736..80a7a9f 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -424,6 +424,27 @@ bool Recompiler::Recompile(
+             }
+         };
+ 
++    // Decrement-CTR branches (bdz/bdnz and their CR-conditioned forms). Like
++    // printConditionalBranch, a target outside the function becomes a tail
++    // call + return — AW has bdnzf sites whose targets land in a sibling
++    // function, which otherwise emit a goto to a label that doesn't exist.
++    auto printDecrementCtrBranch = [&](std::string_view ctrCond, const std::string& extraCond, size_t target)
++        {
++            println("\t--{}.u64;", ctr());
++            if (target < fn.base || target >= fn.base + fn.size)
++            {
++                println("\tif ({}.u32 {}{}) {{", ctr(), ctrCond, extraCond);
++                print("\t");
++                printFunctionCall(target);
++                println("\t\treturn;");
++                println("\t}}");
++            }
++            else
++            {
++                println("\tif ({}.u32 {}{}) goto loc_{:X};", ctr(), ctrCond, extraCond, target);
++            }
++        };
++
+     auto printSetFlushMode = [&](bool enable)
+         {
+             auto newState = enable ? CSRState::VMX : CSRState::FPU;
+@@ -681,8 +702,7 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_BDZ:
+-        println("\t--{}.u64;", ctr());
+-        println("\tif ({}.u32 == 0) goto loc_{:X};", ctr(), insn.operands[0]);
++        printDecrementCtrBranch("== 0", "", insn.operands[0]);
+         break;
+ 
+     case PPC_INST_BDZLR:
+@@ -691,8 +711,7 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_BDNZ:
+-        println("\t--{}.u64;", ctr());
+-        println("\tif ({}.u32 != 0) goto loc_{:X};", ctr(), insn.operands[0]);
++        printDecrementCtrBranch("!= 0", "", insn.operands[0]);
+         break;
+ 
+     // The bdz/bdnz variants conditioned on a CR bit take BI in operands[0]:
+@@ -700,23 +719,19 @@ bool Recompiler::Recompile(
+     // every combination, so these are emitted generically rather than assuming eq
+     // (the shortcut the BDNZF case here historically took).
+     case PPC_INST_BDNZF:
+-        println("\t--{}.u64;", ctr());
+-        println("\tif ({}.u32 != 0 && !{}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
++        printDecrementCtrBranch("!= 0", fmt::format(" && !{}.{}", cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4]), insn.operands[1]);
+         break;
+ 
+     case PPC_INST_BDNZT:
+-        println("\t--{}.u64;", ctr());
+-        println("\tif ({}.u32 != 0 && {}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
++        printDecrementCtrBranch("!= 0", fmt::format(" && {}.{}", cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4]), insn.operands[1]);
+         break;
+ 
+     case PPC_INST_BDZF:
+-        println("\t--{}.u64;", ctr());
+-        println("\tif ({}.u32 == 0 && !{}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
++        printDecrementCtrBranch("== 0", fmt::format(" && !{}.{}", cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4]), insn.operands[1]);
+         break;
+ 
+     case PPC_INST_BDZT:
+-        println("\t--{}.u64;", ctr());
+-        println("\tif ({}.u32 == 0 && {}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
++        printDecrementCtrBranch("== 0", fmt::format(" && {}.{}", cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4]), insn.operands[1]);
+         break;
+ 
+     case PPC_INST_BEQ:
+@@ -1428,11 +1443,11 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_MULHD:
+-        println("\t{}.s64 = int64_t((__int128(int64_t({}.s64)) * __int128(int64_t({}.s64))) >> 64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.s64 = int64_t((__int128_t({}.s64) * __int128_t({}.s64)) >> 64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+         break;
+ 
+     case PPC_INST_MULHDU:
+-        println("\t{}.u64 = uint64_t((unsigned __int128({}.u64) * unsigned __int128({}.u64)) >> 64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = uint64_t((__uint128_t({}.u64) * __uint128_t({}.u64)) >> 64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+         break;
+ 
+     case PPC_INST_MULHW:
+-- 
+2.55.0
+
