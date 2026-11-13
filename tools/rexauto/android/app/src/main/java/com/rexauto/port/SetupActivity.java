@@ -1,12 +1,10 @@
 package com.rexauto.port;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.res.AssetManager;
 import android.content.res.ColorStateList;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -15,21 +13,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
-import android.database.Cursor;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CheckBox;
-import android.widget.EditText;
-import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
-import android.widget.Spinner;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -40,23 +30,30 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The launcher. Knows exactly which game this APK was recompiled for
- * (title + title ID baked in at build time via BuildConfig), so it can tell
- * the user what to drop in and refuse the wrong disc. Takes an ISO, a bare
- * default.xex or an already-extracted folder, unpacks into the app's own
- * storage (no permissions needed), then offers graphics settings and Play.
+ * First-run router + minimal import screen. Official-port UX (v1.3): tapping
+ * the icon goes straight to the game — this activity has NO home anymore.
+ *
+ *   - Game already installed -> launchGame() at once, no UI at all.
+ *   - Full build, first run -> auto-import the bundled game.stfs, then launch.
+ *   - Normal build, first run -> one minimal screen: pick the game once.
+ *
+ * Knows exactly which game this APK was recompiled for (title + title ID
+ * baked in at build time via BuildConfig), so it can refuse the wrong disc.
+ * Takes an ISO, a bare default.xex or an already-extracted folder, unpacks
+ * into the app's own storage (no permissions needed). Graphics, GPU driver,
+ * logs and reset moved to the hidden in-game menu (gear on the virtual
+ * gamepad, see GraphicsDialog / LogsDialog / PadSettingsDialog).
  */
 public class SetupActivity extends Activity {
     private static final int REQ_PICK_FILE = 1;
     private static final int REQ_PICK_TREE = 2;
-    private static final int REQ_PICK_DRIVER = 3;
 
     /** Full builds only (BuildConfig.FULL): the game ships inside the APK. */
     private static final String BUNDLED_GAME_ASSET = "game.stfs";
 
     private TextView status;
     private ProgressBar progress;
-    private Button playBtn, pickBtn, pickDirBtn, gfxBtn, driverBtn, logsBtn, resetBtn;
+    private Button pickBtn, pickDirBtn;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile boolean busy;
 
@@ -74,6 +71,26 @@ public class SetupActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // Crash report first: the native side wipes crash.txt on a fresh
+        // launch, so it must be shown (and renamed away) before the game
+        // starts. When shown, the router continues on dismiss.
+        if (LogsDialog.showCrashReportIfAny(this, this::continueStart)) return;
+        continueStart();
+    }
+
+    /** Router: straight to the game when installed, else the import screen. */
+    private void continueStart() {
+        if (GameFiles.hasValidGameRoot(this)) {
+            launchGame();
+            finish();
+            return;
+        }
+        buildFirstRunScreen();
+        if (BuildConfig.FULL) maybeAutoImportBundledGame();
+    }
+
+    /** The only screen this activity ever shows: pick the game, once. */
+    private void buildFirstRunScreen() {
         float dp = getResources().getDisplayMetrics().density;
         int pad = (int) (20 * dp);
 
@@ -82,92 +99,36 @@ public class SetupActivity extends Activity {
         root.setPadding(pad, (int) (12 * dp), pad, pad);
         root.setBackgroundColor(COL_BG);
 
-        // --- hero: arte oficial del juego como fondo si existe, si no la
-        // aurora dibujada por codigo. El fondo va en un FrameLayout con
-        // CENTER_CROP (recorte centrado, sin deformar) + velo oscuro para
-        // que el titulo blanco se lea sobre la ilustracion.
-        Bitmap heroBg = loadHeroBg();
-        LinearLayout hero = new LinearLayout(this);
-        hero.setOrientation(LinearLayout.VERTICAL);
-        int heroPad = (int) (20 * dp);
-        hero.setPadding(heroPad, heroPad, heroPad, heroPad);
-        LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        heroLp.bottomMargin = (int) (16 * dp);
-        Bitmap cover = loadCover();
-        if (cover != null) {
-            ImageView iv = new ImageView(this);
-            iv.setImageBitmap(cover);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams((int) (72 * dp), (int) (72 * dp));
-            lp.bottomMargin = (int) (8 * dp);
-            iv.setLayoutParams(lp);
-            hero.addView(iv);
-        }
         TextView title = new TextView(this);
         title.setText(BuildConfig.GAME_TITLE);
         title.setTextSize(30);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.WHITE);
-        title.setShadowLayer(4, 0, 2, 0x80000000);
-        hero.addView(title);
+        root.addView(title);
+
         TextView edition = new TextView(this);
         edition.setText(getString(R.string.edition, BuildConfig.TITLE_ID));
         edition.setTextSize(13);
         edition.setTypeface(Typeface.DEFAULT_BOLD);
         edition.setTextColor(COL_SILVER);
-        edition.setPadding(0, (int) (4 * dp), 0, 0);
-        hero.addView(edition);
-        TextView tagline = new TextView(this);
-        tagline.setText(R.string.hero_tagline);
-        tagline.setTextSize(14);
-        tagline.setTextColor(0xE6FFFFFF);
-        tagline.setPadding(0, (int) (6 * dp), 0, 0);
-        hero.addView(tagline);
-        if (heroBg != null) {
-            FrameLayout heroWrap = new FrameLayout(this);
-            ImageView bg = new ImageView(this);
-            bg.setImageBitmap(heroBg);
-            bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            heroWrap.addView(bg, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT));
-            View scrim = new View(this);
-            scrim.setBackgroundColor(0x66000000);
-            heroWrap.addView(scrim, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT));
-            heroWrap.addView(hero, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT));
-            heroWrap.setLayoutParams(heroLp);
-            root.addView(heroWrap);
-        } else {
-            hero.setBackgroundResource(R.drawable.aurora_hero);
-            hero.setLayoutParams(heroLp);
-            root.addView(hero);
-        }
+        edition.setPadding(0, (int) (4 * dp), 0, (int) (12 * dp));
+        root.addView(edition);
 
-        // --- tarjeta de estado del juego ------------------------------------
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundResource(R.drawable.card_status);
-        card.setPadding(pad, (int) (14 * dp), pad, (int) (14 * dp));
-        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        cardLp.bottomMargin = (int) (12 * dp);
-        card.setLayoutParams(cardLp);
-        TextView statusLabel = new TextView(this);
-        statusLabel.setText(R.string.status_label);
-        statusLabel.setTextSize(11);
-        statusLabel.setTypeface(Typeface.DEFAULT_BOLD);
-        statusLabel.setTextColor(COL_LAVENDER);
-        statusLabel.setAllCaps(true);
-        card.addView(statusLabel);
+        TextView help = new TextView(this);
+        help.setText(getString(R.string.first_run_help, BuildConfig.GAME_TITLE));
+        help.setTextSize(14);
+        help.setTextColor(COL_MUTED);
+        help.setPadding(0, 0, 0, (int) (16 * dp));
+        root.addView(help);
+
+        pickBtn = button(root, R.string.pick_iso, v -> pickFile());
+        pickDirBtn = button(root, R.string.pick_folder, v -> pickFolder());
+
         status = new TextView(this);
         status.setTextSize(15);
         status.setTextColor(COL_LAVENDER);
-        status.setPadding(0, (int) (4 * dp), 0, 0);
-        card.addView(status);
+        status.setPadding(0, (int) (16 * dp), 0, 0);
+        root.addView(status);
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setVisibility(View.GONE);
         progress.setMax(1000);
@@ -177,134 +138,12 @@ public class SetupActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         progLp.topMargin = (int) (10 * dp);
         progress.setLayoutParams(progLp);
-        card.addView(progress);
-        root.addView(card);
-
-        // --- JUGAR: boton grande y destacado --------------------------------
-        playBtn = primaryButton(root, R.string.play, v -> launchGame());
-
-        // --- importar --------------------------------------------------------
-        sectionLabel(root, R.string.section_import);
-        pickBtn = button(root, R.string.pick_iso, v -> pickFile());
-        pickDirBtn = button(root, R.string.pick_folder, v -> pickFolder());
-
-        // --- ajustes ---------------------------------------------------------
-        sectionLabel(root, R.string.section_settings);
-        gfxBtn = button(root, R.string.graphics, v -> showGraphicsDialog());
-        driverBtn = button(root, R.string.gpu_driver, v -> showDriverDialog());
-
-        // --- registros y datos ----------------------------------------------
-        sectionLabel(root, R.string.section_data);
-        logsBtn = button(root, R.string.logs, v -> showLogsDialog());
-        resetBtn = button(root, R.string.reset, v -> reset());
-
-        // --- ayuda, al pie ---------------------------------------------------
-        TextView help = new TextView(this);
-        help.setText(getString(BuildConfig.FULL ? R.string.setup_help_full : R.string.setup_help, BuildConfig.GAME_TITLE, BuildConfig.TITLE_ID));
-        help.setTextSize(13);
-        help.setTextColor(COL_MUTED);
-        help.setPadding(0, (int) (16 * dp), 0, (int) (8 * dp));
-        root.addView(help);
+        root.addView(progress);
 
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(COL_BG);
         sv.addView(root);
         setContentView(sv);
-        refresh();
-        showCrashReportIfAny();
-        maybeAutoImportBundledGame();
-    }
-
-    // --- crash report / logs ------------------------------------------------
-    private File logsDir() {
-        File ext = getExternalFilesDir(null);
-        return new File(ext, "logs");
-    }
-
-    private File crashFile() { return new File(logsDir(), "crash.txt"); }
-
-    private File gameLog() { return new File(logsDir(), BuildConfig.PROJECT + ".log"); }
-
-    private static String tail(File f, int maxChars) {
-        if (f == null || !f.isFile()) return "";
-        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r")) {
-            long len = raf.length();
-            long from = Math.max(0, len - maxChars);
-            raf.seek(from);
-            byte[] buf = new byte[(int) (len - from)];
-            raf.readFully(buf);
-            return new String(buf, java.nio.charset.StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    /** libmain.so writes logs/crash.txt from its signal handler; show it once. */
-    private void showCrashReportIfAny() {
-        File c = crashFile();
-        if (!c.isFile()) return;
-        String report = tail(c, 6000);
-        String log = tail(gameLog(), 3000);
-        String text = report + "\n--- últimas líneas del registro ---\n" + log;
-        TextView tv = new TextView(this);
-        tv.setText(text);
-        tv.setTextSize(11);
-        tv.setTypeface(Typeface.MONOSPACE);
-        tv.setTextIsSelectable(true);
-        int p = (int) (12 * getResources().getDisplayMetrics().density);
-        tv.setPadding(p, p, p, p);
-        ScrollView sv = new ScrollView(this);
-        sv.addView(tv);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.crash_title)
-                .setView(sv)
-                .setPositiveButton(R.string.share, (d, w) -> shareText(getString(R.string.crash_title), text))
-                .setNeutralButton(R.string.copy, (d, w) -> copyText(text))
-                .setNegativeButton(android.R.string.ok, null)
-                .setOnDismissListener(d -> { c.renameTo(new File(logsDir(), "crash.prev.txt")); })
-                .show();
-    }
-
-    private void showLogsDialog() {
-        String prev = tail(new File(logsDir(), "crash.prev.txt"), 4000);
-        String cur = tail(crashFile(), 4000);
-        String log = tail(gameLog(), 6000);
-        String prof = tail(new File(logsDir(), "profile.txt"), 5000);
-        String text = (cur.isEmpty() ? prev : cur);
-        if (!text.isEmpty()) text = "--- último fallo ---\n" + text + "\n";
-        if (!prof.isEmpty()) text += "--- perfil (dónde va el tiempo de CPU) ---\n" + prof + "\n";
-        text += "--- " + BuildConfig.PROJECT + ".log (final) ---\n" + (log.isEmpty() ? getString(R.string.log_empty) : log);
-        final String all = text;
-        TextView tv = new TextView(this);
-        tv.setText(all);
-        tv.setTextSize(11);
-        tv.setTypeface(Typeface.MONOSPACE);
-        tv.setTextIsSelectable(true);
-        int p = (int) (12 * getResources().getDisplayMetrics().density);
-        tv.setPadding(p, p, p, p);
-        ScrollView sv = new ScrollView(this);
-        sv.addView(tv);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.logs)
-                .setView(sv)
-                .setPositiveButton(R.string.share, (d, w) -> shareText(BuildConfig.PROJECT + " log", all))
-                .setNeutralButton(R.string.copy, (d, w) -> copyText(all))
-                .setNegativeButton(android.R.string.ok, null)
-                .show();
-    }
-
-    private void shareText(String subject, String text) {
-        Intent i = new Intent(Intent.ACTION_SEND);
-        i.setType("text/plain");
-        i.putExtra(Intent.EXTRA_SUBJECT, subject);
-        i.putExtra(Intent.EXTRA_TEXT, text);
-        try { startActivity(Intent.createChooser(i, subject)); } catch (Exception e) { copyText(text); }
-    }
-
-    private void copyText(String text) {
-        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("log", text));
-        Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show();
     }
 
     /** Boton secundario: superficie oscura, borde azul lavanda, texto plata. */
@@ -324,74 +163,6 @@ public class SetupActivity extends Activity {
         b.setLayoutParams(lp);
         parent.addView(b);
         return b;
-    }
-
-    /** Boton principal (JUGAR): grande, degradado turquesa -> azul hielo. */
-    private Button primaryButton(LinearLayout parent, int text, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(text);
-        b.setTextSize(18);
-        b.setTypeface(Typeface.DEFAULT_BOLD);
-        b.setTextColor(COL_BG);
-        b.setAllCaps(false);
-        b.setBackgroundResource(R.drawable.btn_primary);
-        b.setOnClickListener(l);
-        float dp = getResources().getDisplayMetrics().density;
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, (int) (56 * dp));
-        lp.topMargin = (int) (4 * dp);
-        lp.bottomMargin = (int) (8 * dp);
-        b.setLayoutParams(lp);
-        parent.addView(b);
-        return b;
-    }
-
-    /** Etiqueta de seccion: versales pequenas en lavanda. */
-    private void sectionLabel(LinearLayout parent, int text) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextSize(12);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
-        t.setTextColor(COL_LAVENDER);
-        t.setAllCaps(true);
-        float dp = getResources().getDisplayMetrics().density;
-        t.setPadding(0, (int) (14 * dp), 0, (int) (2 * dp));
-        parent.addView(t);
-    }
-
-    /** Fondo oficial del juego (assets/hero_bg.jpg, nxebg del propio juego). */
-    private Bitmap loadHeroBg() {
-        try (InputStream in = getAssets().open("hero_bg.jpg", AssetManager.ACCESS_STREAMING)) {
-            return BitmapFactory.decodeStream(in);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private Bitmap loadCover() {
-        try (InputStream in = getAssets().open("cover.png", AssetManager.ACCESS_STREAMING)) {
-            return BitmapFactory.decodeStream(in);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private void refresh() {
-        boolean ready = GameFiles.hasValidGameRoot(this);
-        playBtn.setVisibility(ready ? View.VISIBLE : View.GONE);
-        gfxBtn.setVisibility(View.VISIBLE);
-        // Turnip solo existe en Adreno: en Mali (y demas GPUs) el boton no
-        // aparece, para no ofrecer nunca un driver que no se puede usar.
-        driverBtn.setVisibility(GpuDriver.isAdreno() ? View.VISIBLE : View.GONE);
-        if (!busy) {
-            if (ready) {
-                status.setText(getString(R.string.status_ready, GameFiles.configuredGameRoot(this)));
-                status.setTextColor(COL_TURQUOISE);
-            } else {
-                status.setText(getString(R.string.status_idle));
-                status.setTextColor(COL_LAVENDER);
-            }
-        }
     }
 
     // --- input pickers ------------------------------------------------------
@@ -416,16 +187,12 @@ public class SetupActivity extends Activity {
         Uri uri = data.getData();
         if (req == REQ_PICK_FILE) importFile(uri);
         else if (req == REQ_PICK_TREE) importTree(uri);
-        else if (req == REQ_PICK_DRIVER) importDriver(uri);
     }
 
     private void setBusy(boolean b) {
         busy = b;
         pickBtn.setEnabled(!b);
         pickDirBtn.setEnabled(!b);
-        driverBtn.setEnabled(!b);
-        resetBtn.setEnabled(!b);
-        playBtn.setEnabled(!b);
         progress.setVisibility(b ? View.VISIBLE : View.GONE);
         progress.setIndeterminate(true);
     }
@@ -674,7 +441,12 @@ public class SetupActivity extends Activity {
         return null;
     }
 
-    /** Title-ID gate + write game_root.txt. */
+    /**
+     * Title-ID gate + write game_root.txt, then straight into the game.
+     * Official-port UX: no "installed" screen, no JUGAR button — the game
+     * starts right away. Called from import threads, so the launch runs on
+     * the UI thread.
+     */
     private void finish(File xex) throws Exception {
         String got = GameFiles.xexTitleId(xex);
         String want = BuildConfig.TITLE_ID;
@@ -690,18 +462,14 @@ public class SetupActivity extends Activity {
         new GraphicsSettings(this).write(this);
         ui.post(() -> {
             setBusy(false);
-            refresh();
-            Toast.makeText(this, R.string.status_done, Toast.LENGTH_SHORT).show();
+            launchGame();
+            finish();
         });
     }
 
     private void fail(String msg) {
         ui.post(() -> {
             setBusy(false);
-            // refresh() primero: si pusiera el error antes, refresh() lo
-            // taparia con el texto de estado (antes el mensaje de error
-            // desaparecia al instante). El error queda visible en rosa suave.
-            refresh();
             status.setText(msg == null ? getString(R.string.err_generic) : msg);
             status.setTextColor(COL_ERROR);
         });
@@ -712,205 +480,6 @@ public class SetupActivity extends Activity {
             if (c != null && c.moveToFirst()) return c.getString(0);
         } catch (Exception ignored) { }
         return uri.getLastPathSegment();
-    }
-
-    private void reset() {
-        new AlertDialog.Builder(this)
-                .setMessage(R.string.reset_confirm)
-                .setPositiveButton(android.R.string.ok, (d, w) -> {
-                    GameFiles.configFile(this).delete();
-                    deleteRecursively(GameFiles.gameDir(this));
-                    refresh();
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
-    }
-
-    private static void deleteRecursively(File f) {
-        File[] kids = f.listFiles();
-        if (kids != null) for (File k : kids) deleteRecursively(k);
-        //noinspection ResultOfMethodCallIgnored
-        f.delete();
-    }
-
-    // --- graphics settings --------------------------------------------------
-    // --- custom GPU driver (Turnip) ----------------------------------------
-    private void showDriverDialog() {
-        GpuDriver gd = new GpuDriver(this);
-        List<GpuDriver.Info> list = gd.installed();
-        String[] names = new String[list.size() + 1];
-        names[0] = getString(R.string.gpu_driver_system);
-        int checked = 0;
-        for (int i = 0; i < list.size(); i++) {
-            GpuDriver.Info d = list.get(i);
-            names[i + 1] = d.name + (d.version.isEmpty() ? "" : "  (" + d.version + ")");
-            if (d.slug.equals(gd.selected())) checked = i + 1;
-        }
-        final int[] pick = {checked};
-        AlertDialog.Builder b = new AlertDialog.Builder(this)
-                .setTitle(R.string.gpu_driver)
-                .setSingleChoiceItems(names, checked, (d, w) -> pick[0] = w)
-                .setPositiveButton(android.R.string.ok, (d, w) -> {
-                    try {
-                        gd.select(pick[0] == 0 ? null : list.get(pick[0] - 1).slug);
-                        Toast.makeText(this, pick[0] == 0 ? getString(R.string.gpu_driver_system) : list.get(pick[0] - 1).name, Toast.LENGTH_SHORT).show();
-                    } catch (Exception e) { Toast.makeText(this, e.toString(), Toast.LENGTH_LONG).show(); }
-                })
-                .setNeutralButton(R.string.gpu_driver_import, (d, w) -> {
-                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    i.addCategory(Intent.CATEGORY_OPENABLE);
-                    i.setType("*/*");
-                    i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/x-zip-compressed", "application/octet-stream"});
-                    startActivityForResult(i, REQ_PICK_DRIVER);
-                })
-                .setNegativeButton(android.R.string.cancel, null);
-        if (!GpuDriver.isAdreno()) {
-            b.setMessage(R.string.gpu_driver_not_adreno);
-        }
-        AlertDialog dlg = b.create();
-        dlg.getListView().setOnItemLongClickListener((p, v, pos, id) -> {
-            if (pos == 0) return true;
-            GpuDriver.Info d = list.get(pos - 1);
-            new AlertDialog.Builder(this).setMessage(getString(R.string.gpu_driver_remove, d.name))
-                    .setPositiveButton(android.R.string.ok, (dd, ww) -> {
-                        try { gd.remove(d.slug); } catch (Exception e) { Toast.makeText(this, e.toString(), Toast.LENGTH_LONG).show(); }
-                        dlg.dismiss();
-                        showDriverDialog();
-                    }).setNegativeButton(android.R.string.cancel, null).show();
-            return true;
-        });
-        dlg.show();
-    }
-
-    private void importDriver(Uri uri) {
-        setBusy(true);
-        String name = displayName(uri);
-        post(getString(R.string.status_reading, name));
-        new Thread(() -> {
-            try {
-                GpuDriver gd = new GpuDriver(this);
-                GpuDriver.Info info = gd.importZip(getContentResolver(), uri, name);
-                gd.select(info.slug);
-                ui.post(() -> {
-                    setBusy(false);
-                    refresh();
-                    Toast.makeText(this, getString(R.string.gpu_driver_installed, info.name), Toast.LENGTH_LONG).show();
-                    showDriverDialog();
-                });
-            } catch (Exception e) {
-                fail(e.getMessage());
-            }
-        }, "import-driver").start();
-    }
-
-    private void showGraphicsDialog() {
-        GraphicsSettings gs = new GraphicsSettings(this);
-        float dp = getResources().getDisplayMetrics().density;
-        int pad = (int) (16 * dp);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, pad, pad, pad);
-
-        label(box, R.string.gfx_preset);
-        Spinner preset = new Spinner(this);
-        String[] presets = {"performance", "balanced", "accuracy"};
-        preset.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{getString(R.string.preset_performance), getString(R.string.preset_balanced), getString(R.string.preset_accuracy)}));
-        for (int i = 0; i < presets.length; i++) if (presets[i].equals(gs.preset())) preset.setSelection(i);
-        box.addView(preset);
-
-        label(box, R.string.gfx_fps_cap);
-        Spinner fps = new Spinner(this);
-        int[] caps = {0, 30, 60};
-        fps.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{getString(R.string.fps_off), getString(R.string.fps_30), getString(R.string.fps_60)}));
-        for (int i = 0; i < caps.length; i++) if (caps[i] == gs.fpsCap()) fps.setSelection(i);
-        box.addView(fps);
-
-        label(box, R.string.gfx_scale);
-        Spinner scale = new Spinner(this);
-        scale.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                getResources().getStringArray(R.array.gfx_scale_options)));
-        scale.setSelection(gs.resolutionScale() - 1);
-        box.addView(scale);
-
-        label(box, R.string.gfx_effect);
-        Spinner effect = new Spinner(this);
-        String[] effects = {"bilinear", "cas", "fsr"};
-        effect.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                getResources().getStringArray(R.array.gfx_effect_options)));
-        for (int i = 0; i < effects.length; i++) if (effects[i].equals(gs.presentEffect())) effect.setSelection(i);
-        box.addView(effect);
-
-        label(box, R.string.gfx_video_mode);
-        Spinner mode = new Spinner(this);
-        int[][] modes = {{1280, 720}, {1920, 1080}, {1024, 576}, {960, 540}};
-        mode.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                getResources().getStringArray(R.array.gfx_mode_options)));
-        for (int i = 0; i < modes.length; i++) if (modes[i][0] == gs.videoWidth()) mode.setSelection(i);
-        box.addView(mode);
-
-        label(box, R.string.gfx_orientation);
-        Spinner orient = new Spinner(this);
-        String[] orients = {"landscape", "portrait", "auto"};
-        orient.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{getString(R.string.orient_landscape), getString(R.string.orient_portrait), getString(R.string.orient_auto)}));
-        for (int i = 0; i < orients.length; i++) if (orients[i].equals(gs.orientation())) orient.setSelection(i);
-        box.addView(orient);
-
-        CheckBox vsync = new CheckBox(this);
-        vsync.setText(R.string.gfx_vsync);
-        vsync.setChecked(gs.vsync());
-        box.addView(vsync);
-
-        CheckBox letterbox = new CheckBox(this);
-        letterbox.setText(R.string.gfx_letterbox);
-        letterbox.setChecked(gs.letterbox());
-        box.addView(letterbox);
-
-        CheckBox tolerant = new CheckBox(this);
-        tolerant.setText(R.string.gfx_tolerant);
-        tolerant.setChecked(gs.tolerant());
-        box.addView(tolerant);
-
-        label(box, R.string.gfx_extra);
-        EditText extra = new EditText(this);
-        extra.setHint("key=value");
-        extra.setText(gs.extra());
-        extra.setMinLines(2);
-        box.addView(extra);
-
-        ScrollView sv = new ScrollView(this);
-        sv.addView(box);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.graphics)
-                .setView(sv)
-                .setPositiveButton(android.R.string.ok, (d, w) -> {
-                    gs.setPreset(presets[preset.getSelectedItemPosition()]);
-                    gs.setFpsCap(caps[fps.getSelectedItemPosition()]);
-                    gs.setResolutionScale(scale.getSelectedItemPosition() + 1);
-                    gs.setPresentEffect(effects[effect.getSelectedItemPosition()]);
-                    int[] m = modes[mode.getSelectedItemPosition()];
-                    gs.setVideoMode(m[0], m[1]);
-                    gs.setOrientation(orients[orient.getSelectedItemPosition()]);
-                    gs.setVsync(vsync.isChecked());
-                    gs.setLetterbox(letterbox.isChecked());
-                    gs.setTolerant(tolerant.isChecked());
-                    gs.setExtra(extra.getText().toString());
-                    try { gs.write(this); } catch (Exception e) { Toast.makeText(this, e.toString(), Toast.LENGTH_LONG).show(); }
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
-    }
-
-    private void label(LinearLayout parent, int text) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextSize(13);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
-        t.setTextColor(COL_SILVER);
-        t.setPadding(0, 12, 0, 4);
-        parent.addView(t);
     }
 
     private void launchGame() {
