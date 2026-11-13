@@ -1,0 +1,84 @@
+From: Aurora <aurora@child-of-light-recomp.local>
+Date: Fri, 13 Nov 2026 04:30:00 -0600
+Subject: [PATCH 18/15] recompiler: implement vslh, vsrah, vsrh, vsrab, vrlh
+ (Child of Light needs)
+
+Batch A (shifts/rotates): 5 VMX mnemonics, 3,480 unrecognized sites in
+analysis/xenonrecomp-run4.log (vslh 2,420, vsrah 1,024, vrlh 18,
+vsrh 12, vsrab 6).
+
+Per-element loops following the existing VSLB/VSLW/VSRAW templates:
+shift amount from the low byte of each element's slot in vB
+(& 0x7 / & 0xF / & 0x1F), arithmetic shift for VSRA* (signed lanes),
+logical shift for VSL*/VSR* (unsigned lanes). VRLH rotates via
+uint32_t so a shift of 0 is safe ((16 - 0) == 16 is a valid shift
+of a 32-bit value and yields 0).
+
+All 5 Capstone IDs verified in thirdparty/disasm/ppc-inst.h; all 5
+cases were genuinely absent from the tree (no duplicates).
+
+---
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index 6dbda95..7725953 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -2432,6 +2432,14 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_ps({}.f32, simde_mm_round_ps(simde_mm_load_ps({}.f32), SIMDE_MM_FROUND_TO_ZERO | SIMDE_MM_FROUND_NO_EXC));", v(insn.operands[0]), v(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_VRLH:
++        // TODO: vectorize, ensure endianness is correct
++        // NOTE: rotate via uint32_t so a shift amount of 0 is safe:
++        // (16 - 0) == 16 is a valid shift of a 32-bit value and yields 0.
++        for (size_t i = 0; i < 8; i++)
++            println("\t{}.u16[{}] = uint16_t((uint32_t({}.u16[{}]) << ({}.u8[{}] & 0xF)) | (uint32_t({}.u16[{}]) >> (16 - ({}.u8[{}] & 0xF))));", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 2, v(insn.operands[1]), i, v(insn.operands[2]), i * 2);
++        break;
++
+     case PPC_INST_VRLIMI128:
+     {
+         constexpr size_t shuffles[] = { SIMDE_MM_SHUFFLE(3, 2, 1, 0), SIMDE_MM_SHUFFLE(2, 1, 0, 3), SIMDE_MM_SHUFFLE(1, 0, 3, 2), SIMDE_MM_SHUFFLE(0, 3, 2, 1) };
+@@ -2466,6 +2474,12 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_alignr_epi8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8), {}));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]), 16 - insn.operands[3]);
+         break;
+ 
++    case PPC_INST_VSLH:
++        // TODO: vectorize, ensure endianness is correct
++        for (size_t i = 0; i < 8; i++)
++            println("\t{}.u16[{}] = {}.u16[{}] << ({}.u8[{}] & 0xF);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 2);
++        break;
++
+     case PPC_INST_VSLW:
+     case PPC_INST_VSLW128:
+         // TODO: vectorize, ensure endianness is correct
+@@ -2517,6 +2531,18 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_vsr(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VSRAB:
++        // TODO: vectorize, ensure endianness is correct
++        for (size_t i = 0; i < 16; i++)
++            println("\t{}.s8[{}] = {}.s8[{}] >> ({}.u8[{}] & 0x7);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i);
++        break;
++
++    case PPC_INST_VSRAH:
++        // TODO: vectorize, ensure endianness is correct
++        for (size_t i = 0; i < 8; i++)
++            println("\t{}.s16[{}] = {}.s16[{}] >> ({}.u8[{}] & 0xF);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 2);
++        break;
++
+     case PPC_INST_VSRAW:
+     case PPC_INST_VSRAW128:
+         // TODO: vectorize, ensure endianness is correct
+@@ -2524,6 +2550,12 @@ bool Recompiler::Recompile(
+             println("\t{}.s32[{}] = {}.s32[{}] >> ({}.u8[{}] & 0x1F);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 4);
+         break;
+ 
++    case PPC_INST_VSRH:
++        // TODO: vectorize, ensure endianness is correct
++        for (size_t i = 0; i < 8; i++)
++            println("\t{}.u16[{}] = {}.u16[{}] >> ({}.u8[{}] & 0xF);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 2);
++        break;
++
+     case PPC_INST_VSRW:
+     case PPC_INST_VSRW128:
+         // TODO: vectorize, ensure endianness is correct
