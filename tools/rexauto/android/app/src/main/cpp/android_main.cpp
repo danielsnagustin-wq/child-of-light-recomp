@@ -51,11 +51,13 @@
 #include <fmt/format.h>
 
 #include "android_gamepad.h"
+#include "stfs_asset.h"
 #if REX_HAVE_ADRENOTOOLS
 #include <adrenotools/driver.h>
 #endif
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
+#include <rex/filesystem/stfs_asset.h>
 #include <rex/logging.h>
 #include <rex/main_android.h>
 #include <rex/memory.h>
@@ -556,7 +558,37 @@ int RunAndroidApp() {
   std::vector<std::string> args;
   args.emplace_back(kAppIdentifier);
   if (!game_root.empty()) {
-    args.emplace_back(fmt::format("--game_data_root={}", game_root));
+    if (game_root.starts_with("asset:")) {
+      // Full build (Fase 5, v1.4): the game lives inside the APK as an
+      // uncompressed asset, not in a host directory. Do NOT pass the marker
+      // as --game_data_root: ReXApp::ConstructRuntime rejects any non-empty
+      // root that is not a directory. Instead, bridge the fd triple that
+      // PortApp handed over at startup (StfsAsset.setAssetFd JNI, stored by
+      // stfs_asset_jni.cpp) into the SDK, so Runtime::SetupVfs mounts the
+      // STFS container from the APK. The SDK setter dup()s the fd, so the
+      // JNI-side copy stays open for the process as documented.
+      // The game root is decided by the game_root.txt marker alone: an
+      // extracted directory root keeps the historical host-path mount even
+      // if an asset fd was also handed over.
+      int asset_fd = -1;
+      std::int64_t asset_offset = 0, asset_length = 0;
+      if (rexport::StfsAssetFd(&asset_fd, &asset_offset, &asset_length)) {
+        rex::filesystem::SetStfsAssetSource(asset_fd, uint64_t(asset_offset),
+                                            uint64_t(asset_length));
+        ALOGI("game root is %s - STFS asset fd=%d offset=%lld length=%lld",
+              game_root.c_str(), asset_fd, static_cast<long long>(asset_offset),
+              static_cast<long long>(asset_length));
+      } else {
+        // No triple was handed over: SetupVfs falls back to the (empty)
+        // host root and ConstructRuntime fails with "--game_data_root was
+        // not provided". Say why here, where the cause is visible.
+        ALOGE("game root is %s but no STFS asset fd was handed over "
+              "(PortApp/StfsAsset failed?) - the game cannot start",
+              game_root.c_str());
+      }
+    } else {
+      args.emplace_back(fmt::format("--game_data_root={}", game_root));
+    }
   } else {
     ALOGE("no game_root.txt under %s - re-run setup", external_dir.c_str());
   }
@@ -580,6 +612,13 @@ int RunAndroidApp() {
   args.emplace_back("--ignore_thread_affinities=true");
   args.emplace_back("--ignore_thread_priorities=true");
   args.emplace_back("--log_flush_interval=5");  // batch log writes
+  // Present frames that used placeholder pipelines instead of dropping them:
+  // the skip (default true) drops EVERY frame that still has an uncompiled
+  // shader, so during shader warm-up whole frames vanish instead of showing
+  // a placeholder for a frame or two. Presenting the placeholder can flash
+  // while the cache warms up, but it stops the frame drops. Overridable
+  // from settings.txt.
+  args.emplace_back("--vulkan_async_skip_incomplete_frames=false");
   for (auto& a : ReadSettingsArgs(external_dir + "/" + kSettingsFileName)) {
     ALOGI("setting: %s", a.c_str());
     args.emplace_back(std::move(a));
