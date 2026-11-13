@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hero aurora: degradado original turquesa -> azul lavanda -> lavanda,
+     con un velo oscuro abajo para que el titulo blanco se lea bien.
+     Sin imagenes: todo dibujado por codigo/XML. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="135"
+                android:startColor="#75D6CE"
+                android:centerColor="#6578B8"
+                android:endColor="#A99ACD" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="90"
+                android:startColor="#0010131D"
+                android:centerColor="#3310131D"
+                android:endColor="#B310131D" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+</layer-list>
