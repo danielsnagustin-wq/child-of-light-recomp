@@ -1,0 +1,111 @@
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 0b45c0d..4548766 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -931,10 +931,17 @@ bool VulkanCommandProcessor::SetupContext() {
+     return false;
+   }
+   if (!device_properties.vertexPipelineStoresAndAtomics) {
+-    REXGPU_ERROR(
+-        "Vulkan vertexPipelineStoresAndAtomics is required for GPU emulation and "
+-        "D3D12 parity, but unsupported by the selected device");
+-    return false;
++    if (REXCVAR_GET(vulkan_require_vertex_pipeline_stores_and_atomics)) {
++      REXGPU_ERROR(
++          "Vulkan vertexPipelineStoresAndAtomics is required for GPU emulation and "
++          "D3D12 parity (vulkan_require_vertex_pipeline_stores_and_atomics=true), "
++          "but unsupported by the selected device");
++      return false;
++    }
++    REXGPU_WARN(
++        "Vulkan vertexPipelineStoresAndAtomics is not supported by the device; "
++        "vertex-shader memory export falls back to compute shaders, and draws "
++        "that use vertex memexport will fail individually");
+   }
+   if (!device_properties.geometryShader) {
+     if (REXCVAR_GET(vulkan_require_geometry_shader)) {
+diff --git a/src/ui/vulkan/vulkan_device.cpp b/src/ui/vulkan/vulkan_device.cpp
+index 8197bb4..9907bc7 100644
+--- a/src/ui/vulkan/vulkan_device.cpp
++++ b/src/ui/vulkan/vulkan_device.cpp
+@@ -26,19 +26,25 @@ REXCVAR_DEFINE_BOOL(vulkan_require_fragment_stores_and_atomics, true, "UI/Vulkan
+                     "Deprecated and ignored for parity; fragmentStoresAndAtomics is always "
+                     "required for Vulkan GPU emulation")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+-REXCVAR_DEFINE_BOOL(vulkan_require_vertex_pipeline_stores_and_atomics, true, "UI/Vulkan",
+-                    "Deprecated and ignored for parity; vertexPipelineStoresAndAtomics is always "
+-                    "required for Vulkan GPU emulation")
++REXCVAR_DEFINE_BOOL(vulkan_require_vertex_pipeline_stores_and_atomics, false, "UI/Vulkan",
++                    "Require vertexPipelineStoresAndAtomics for Vulkan GPU emulation; when "
++                    "false (default), devices without it (e.g. Mali-G57) still boot and "
++                    "vertex-shader memory export falls back to compute shaders, while "
++                    "draws that actually use vertex memexport fail individually instead "
++                    "of the whole device")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+-// Apple Silicon / MoltenVK does not expose geometryShader or fillModeNonSolid;
+-// default both to false on macOS so the device can still be selected.
++// Apple Silicon / MoltenVK does not expose geometryShader; default it to false
++// on macOS so the device can still be selected. fillModeNonSolid defaults to
++// false everywhere: Mali GPUs lack it, and the fallback is solid fill.
+ REXCVAR_DEFINE_BOOL(vulkan_require_geometry_shader, !REX_PLATFORM_MAC, "UI/Vulkan",
+                     "Require geometryShader support for Vulkan GPU emulation (disable to allow "
+                     "fallback primitive emulation paths)")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+-REXCVAR_DEFINE_BOOL(vulkan_require_fill_mode_non_solid, !REX_PLATFORM_MAC, "UI/Vulkan",
+-                    "Require fillModeNonSolid support for Vulkan GPU emulation (disable to "
+-                    "allow fallback to solid fill for line/point polygon modes)")
++REXCVAR_DEFINE_BOOL(vulkan_require_fill_mode_non_solid, false, "UI/Vulkan",
++                    "Require fillModeNonSolid support for Vulkan GPU emulation; when "
++                    "false (default), devices without it (e.g. Mali-G57) still boot and "
++                    "line/point polygon modes fall back to solid fill (pipelines that "
++                    "need non-solid fill fail individually instead of the whole device)")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+ 
+ namespace rex {
+@@ -116,13 +122,27 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
+           properties.deviceName);
+       return nullptr;
+     }
+-    if (!supported_features.vertexPipelineStoresAndAtomics) {
++    if (REXCVAR_GET(vulkan_require_vertex_pipeline_stores_and_atomics) &&
++        !supported_features.vertexPipelineStoresAndAtomics) {
+       REXLOG_WARN(
+           "Vulkan device '{}' doesn't support vertexPipelineStoresAndAtomics, which "
+-          "is required for Vulkan GPU emulation parity",
++          "is required for Vulkan GPU emulation parity "
++          "(vulkan_require_vertex_pipeline_stores_and_atomics=true)",
+           properties.deviceName);
+       return nullptr;
+     }
++    if (!supported_features.vertexPipelineStoresAndAtomics) {
++      // Mali (and other mobile GPUs) lack vertex pipeline stores/atomics, but
++      // the GPU emulation already has a fallback: vertex shaders that need
++      // memory export are translated to compute shaders (see
++      // command_processor.cpp and spirv_translator.h). Only draws that
++      // actually use vertex-shader memexport fail, not the whole device.
++      REXLOG_WARN(
++          "Vulkan device '{}' doesn't support vertexPipelineStoresAndAtomics; "
++          "continuing with the compute-shader memexport fallback "
++          "(vulkan_require_vertex_pipeline_stores_and_atomics=false)",
++          properties.deviceName);
++    }
+     if (REXCVAR_GET(vulkan_require_geometry_shader) && !supported_features.geometryShader) {
+       REXLOG_WARN(
+           "Vulkan device '{}' doesn't support geometryShader, but "
+@@ -137,6 +157,16 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
+           properties.deviceName);
+       return nullptr;
+     }
++    if (!supported_features.fillModeNonSolid) {
++      // Mali GPUs lack non-solid fill modes; pipelines that need them fail
++      // individually (see pipeline_cache.cpp) and line/point modes fall back
++      // to solid fill. A 2D title like Child of Light never uses them.
++      REXLOG_WARN(
++          "Vulkan device '{}' doesn't support fillModeNonSolid; continuing "
++          "with the solid-fill fallback "
++          "(vulkan_require_fill_mode_non_solid=false)",
++          properties.deviceName);
++    }
+   }
+ 
+   // Enable needed extensions.
