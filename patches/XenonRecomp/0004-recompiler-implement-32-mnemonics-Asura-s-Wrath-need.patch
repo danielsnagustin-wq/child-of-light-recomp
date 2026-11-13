@@ -1,0 +1,526 @@
+From 184449851d0d562944030e78eb19ba2323cd52e7 Mon Sep 17 00:00:00 2001
+From: wivi514 <wivi514@hotmail.com>
+Date: Sun, 2 Aug 2026 23:51:24 -0400
+Subject: [PATCH 04/14] recompiler: implement 32 mnemonics Asura's Wrath needs;
+ fix vcmpbfp and generic BI branches
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Asura's Wrath (43430817) hit 3,186 unrecognized-instruction sites across 32
+mnemonics that UnleashedRecomp's titles never used. All are now emitted:
+
+- bdzf/bdzt/bdnzt added and bdnzf de-shortcut: the BI operand now selects the
+  real CR field and bit (lt/gt/eq/so) instead of assuming eq — AW uses every
+  combination. Shared CR_BIT_NAMES table.
+- Update-form loads/stores (D and X forms): lhzu, lhau, lfsu, lfdu, lwzux,
+  lhzux, lbzux, lfsux, sthu, stfsu, stfdu, stbux, sthux. Same EA-then-writeback
+  shape as the existing lbzu/stwu emitters.
+- Integer: addc, addme, subfze (u32-carry convention as adde/addze; carry
+  computed before the destination write because rD may alias rA), eqv,
+  mulhd/mulhdu (__int128 high halves).
+- FP: frsqrte (exact 1/sqrt is a valid estimate, same stance as vrsqrtefp).
+- VMX: vsel128 (VS128 mask lands in operands[3], shares the vsel emission),
+  vaddsws (scalar s64 clamp like vsubsws), vsubshs, lvehx (aligned load +
+  reverse shuffle; untouched lanes are architecturally undefined),
+  vpkswss/vpkswss128, vpkuhus/vpkuhus128, vpkuwus/vpkuwus128 (unsigned min
+  before SSE's signed-input pack preserves exact unsigned saturation),
+  vctuxs/vcfpuxws128 via a new simde_mm_vctuxs helper (NaN/negative -> 0,
+  >= 2^32 -> 0xFFFFFFFF, high-bit split for the 2^31..2^32 range).
+- dcbst: no-op like the other cache maintenance ops.
+
+vcmpbfp/vcmpbfp128 was a __builtin_debugtrap; now implemented (bit31 = a > b,
+bit30 = a < -b, NaN sets both) with the Rc form setting CR6's all-in-bounds
+bit — AW branches on it (bne cr6) in shipped code.
+
+The RC-bit sanity check now scans everything the instruction emitted instead
+of only the last line, which false-positived on multi-line emissions ending
+in a closing brace.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ XenonRecomp/recompiler.cpp | 249 ++++++++++++++++++++++++++++++++++++-
+ XenonUtils/ppc_context.h   |  16 +++
+ 2 files changed, 260 insertions(+), 5 deletions(-)
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index c5b10d0..cda7736 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -2,6 +2,10 @@
+ #include "recompiler.h"
+ #include <xex_patcher.h>
+ 
++// CR bit selected by a branch instruction's BI field, in encoding order.
++// Used by the bdzf/bdzt/bdnzf/bdnzt emitters (BI % 4 picks the bit).
++static constexpr const char* CR_BIT_NAMES[] = { "lt", "gt", "eq", "so" };
++
+ static uint64_t ComputeMask(uint32_t mstart, uint32_t mstop)
+ {
+     mstart &= 0x3F;
+@@ -519,6 +523,11 @@ bool Recompiler::Recompile(
+ 
+     int id = insn.opcode->id;
+ 
++    // Remembered so the RC-bit sanity check below can scan everything this
++    // instruction emitted, not just the final line (multi-line emissions like
++    // vcmpbfp's braced block end in "}", which the last-line check can't see past).
++    const size_t outSizeBeforeInstruction = out.size();
++
+     // Handling instructions that don't disassemble correctly for some reason here
+     if (id == PPC_INST_VUPKHSB128 && insn.operands[2] == 0x60) id = PPC_INST_VUPKHSH128;
+     else if (id == PPC_INST_VUPKLSB128 && insn.operands[2] == 0x60) id = PPC_INST_VUPKLSH128;
+@@ -531,6 +540,16 @@ bool Recompiler::Recompile(
+             println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
+         break;
+ 
++    case PPC_INST_ADDC:
++        // Carry must be computed from the *old* operands before the destination is
++        // written — rD may alias rA or rB.
++        println("\t{}.u8 = ({}.u32 + {}.u32 < {}.u32);", temp(), r(insn.operands[1]), r(insn.operands[2]), r(insn.operands[1]));
++        println("\t{}.u64 = {}.u64 + {}.u64;", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.ca = {}.u8;", xer(), temp());
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
++        break;
++
+     case PPC_INST_ADDE:
+         println("\t{}.u8 = ({}.u32 + {}.u32 < {}.u32) | ({}.u32 + {}.u32 + {}.ca < {}.ca);", temp(), r(insn.operands[1]), r(insn.operands[2]), r(insn.operands[1]), r(insn.operands[1]), r(insn.operands[2]), xer(), xer());
+         println("\t{}.u64 = {}.u64 + {}.u64 + {}.ca;", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]), xer());
+@@ -560,6 +579,17 @@ bool Recompiler::Recompile(
+         println("{};", static_cast<int32_t>(insn.operands[2] << 16));
+         break;
+ 
++    case PPC_INST_ADDME:
++        // rD = rA + CA - 1 (i.e. rA + CA + 0xFFFF...FFFF). 32-bit carry out of
++        // rA + 0xFFFFFFFF + CA is 1 unless rA == 0 and CA == 0; compute it before
++        // writing rD (aliasing), matching the u32-carry convention used by ADDE.
++        println("\t{}.u8 = ({}.u32 != 0) | {}.ca;", temp(), r(insn.operands[1]), xer());
++        println("\t{}.s64 = {}.s64 + {}.ca - 1;", r(insn.operands[0]), r(insn.operands[1]), xer());
++        println("\t{}.ca = {}.u8;", xer(), temp());
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
++        break;
++
+     case PPC_INST_ADDZE:
+         println("\t{}.s64 = {}.s64 + {}.ca;", temp(), r(insn.operands[1]), xer());
+         println("\t{}.ca = {}.u32 < {}.u32;", xer(), temp(), r(insn.operands[1]));
+@@ -665,10 +695,28 @@ bool Recompiler::Recompile(
+         println("\tif ({}.u32 != 0) goto loc_{:X};", ctr(), insn.operands[0]);
+         break;
+ 
++    // The bdz/bdnz variants conditioned on a CR bit take BI in operands[0]:
++    // BI/4 selects the CR field, BI%4 the bit (lt/gt/eq/so). Asura's Wrath uses
++    // every combination, so these are emitted generically rather than assuming eq
++    // (the shortcut the BDNZF case here historically took).
+     case PPC_INST_BDNZF:
+-        // NOTE: assuming eq here as a shortcut because all the instructions in the game do that
+         println("\t--{}.u64;", ctr());
+-        println("\tif ({}.u32 != 0 && !{}.eq) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), insn.operands[1]);
++        println("\tif ({}.u32 != 0 && !{}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
++        break;
++
++    case PPC_INST_BDNZT:
++        println("\t--{}.u64;", ctr());
++        println("\tif ({}.u32 != 0 && {}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
++        break;
++
++    case PPC_INST_BDZF:
++        println("\t--{}.u64;", ctr());
++        println("\tif ({}.u32 == 0 && !{}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
++        break;
++
++    case PPC_INST_BDZT:
++        println("\t--{}.u64;", ctr());
++        println("\tif ({}.u32 == 0 && {}.{}) goto loc_{:X};", ctr(), cr(insn.operands[0] / 4), CR_BIT_NAMES[insn.operands[0] % 4], insn.operands[1]);
+         break;
+ 
+     case PPC_INST_BEQ:
+@@ -807,6 +855,10 @@ bool Recompiler::Recompile(
+         // no op
+         break;
+ 
++    case PPC_INST_DCBST:
++        // no op (cache maintenance)
++        break;
++
+     case PPC_INST_DCBT:
+         // no op
+         break;
+@@ -855,6 +907,12 @@ bool Recompiler::Recompile(
+         // no op
+         break;
+ 
++    case PPC_INST_EQV:
++        println("\t{}.u64 = ~({}.u64 ^ {}.u64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
++        break;
++
+     case PPC_INST_EXTSB:
+         println("\t{}.s64 = {}.s8;", r(insn.operands[0]), r(insn.operands[1]));
+         if (strchr(insn.opcode->name, '.'))
+@@ -1008,6 +1066,13 @@ bool Recompiler::Recompile(
+         println("\t{}.f64 = double(float(sqrt({}.f64)));", f(insn.operands[0]), f(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_FRSQRTE:
++        // Architecturally an estimate; the exact value is a valid estimate
++        // (same approach as VRSQRTEFP below).
++        printSetFlushMode(false);
++        println("\t{}.f64 = 1.0 / sqrt({}.f64);", f(insn.operands[0]), f(insn.operands[1]));
++        break;
++
+     case PPC_INST_FSUB:
+         printSetFlushMode(false);
+         println("\t{}.f64 = {}.f64 - {}.f64;", f(insn.operands[0]), f(insn.operands[1]), f(insn.operands[2]));
+@@ -1031,6 +1096,12 @@ bool Recompiler::Recompile(
+         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
+         break;
+ 
++    case PPC_INST_LBZUX:
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = PPC_LOAD_U8({});", r(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_LBZX:
+         print("\t{}.u64 = PPC_LOAD_U8(", r(insn.operands[0]));
+         if (insn.operands[1] != 0)
+@@ -1074,6 +1145,13 @@ bool Recompiler::Recompile(
+         println("{});", int32_t(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_LFDU:
++        printSetFlushMode(false);
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = PPC_LOAD_U64({});", f(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
+     case PPC_INST_LFDX:
+         printSetFlushMode(false);
+         print("\t{}.u64 = PPC_LOAD_U64(", f(insn.operands[0]));
+@@ -1091,6 +1169,22 @@ bool Recompiler::Recompile(
+         println("\t{}.f64 = double({}.f32);", f(insn.operands[0]), temp());
+         break;
+ 
++    case PPC_INST_LFSU:
++        printSetFlushMode(false);
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u32 = PPC_LOAD_U32({});", temp(), ea());
++        println("\t{}.f64 = double({}.f32);", f(insn.operands[0]), temp());
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
++    case PPC_INST_LFSUX:
++        printSetFlushMode(false);
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u32 = PPC_LOAD_U32({});", temp(), ea());
++        println("\t{}.f64 = double({}.f32);", f(insn.operands[0]), temp());
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_LFSX:
+         printSetFlushMode(false);
+         print("\t{}.u32 = PPC_LOAD_U32(", temp());
+@@ -1107,6 +1201,12 @@ bool Recompiler::Recompile(
+         println("{}));", int32_t(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_LHAU:
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.s64 = int16_t(PPC_LOAD_U16({}));", r(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
+     case PPC_INST_LHAX:
+         print("\t{}.s64 = int16_t(PPC_LOAD_U16(", r(insn.operands[0]));
+         if (insn.operands[1] != 0)
+@@ -1121,6 +1221,18 @@ bool Recompiler::Recompile(
+         println("{});", int32_t(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_LHZU:
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = PPC_LOAD_U16({});", r(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
++    case PPC_INST_LHZUX:
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = PPC_LOAD_U16({});", r(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_LHZX:
+         print("\t{}.u64 = PPC_LOAD_U16(", r(insn.operands[0]));
+         if (insn.operands[1] != 0)
+@@ -1138,6 +1250,11 @@ bool Recompiler::Recompile(
+ 
+     case PPC_INST_LVEWX:
+     case PPC_INST_LVEWX128:
++    case PPC_INST_LVEHX:
++        // lvehx only defines the element addressed by EA; the rest of vD is
++        // architecturally undefined. Loading the whole aligned quadword like lvx
++        // puts the defined halfword in the right (reversed) lane and fills the
++        // undefined ones with real memory, which is a legal implementation.
+     case PPC_INST_LVX:
+     case PPC_INST_LVX128:
+         // NOTE: for endian swapping, we reverse the whole vector instead of individual elements.
+@@ -1228,6 +1345,12 @@ bool Recompiler::Recompile(
+         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
+         break;
+ 
++    case PPC_INST_LWZUX:
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\t{}.u64 = PPC_LOAD_U32({});", r(insn.operands[0]), ea());
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_LWZX:
+         print("\t{}.u64 = PPC_LOAD_U32(", r(insn.operands[0]));
+         if (insn.operands[1] != 0)
+@@ -1304,6 +1427,14 @@ bool Recompiler::Recompile(
+         println("\t{}.ca = ({}.u64 & 0x20000000) != 0;", xer(), r(insn.operands[0]));
+         break;
+ 
++    case PPC_INST_MULHD:
++        println("\t{}.s64 = int64_t((__int128(int64_t({}.s64)) * __int128(int64_t({}.s64))) >> 64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
++        break;
++
++    case PPC_INST_MULHDU:
++        println("\t{}.u64 = uint64_t((unsigned __int128({}.u64) * unsigned __int128({}.u64)) >> 64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
++        break;
++
+     case PPC_INST_MULHW:
+         println("\t{}.s64 = (int64_t({}.s32) * int64_t({}.s32)) >> 32;", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+         break;
+@@ -1489,6 +1620,12 @@ bool Recompiler::Recompile(
+         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
+         break;
+ 
++    case PPC_INST_STBUX:
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U8({}, {}.u8);", ea(), r(insn.operands[0]));
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_STBX:
+         print("{}", mmioStore() ? "\tPPC_MM_STORE_U8(" : "\tPPC_STORE_U8(");
+         if (insn.operands[1] != 0)
+@@ -1534,6 +1671,13 @@ bool Recompiler::Recompile(
+         println("{}, {}.u64);", int32_t(insn.operands[1]), f(insn.operands[0]));
+         break;
+ 
++    case PPC_INST_STFDU:
++        printSetFlushMode(false);
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U64({}, {}.u64);", ea(), f(insn.operands[0]));
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
+     case PPC_INST_STFDX:
+         printSetFlushMode(false);
+         print("{}", mmioStore() ? "\tPPC_MM_STORE_U64(" : "\tPPC_STORE_U64(");
+@@ -1559,6 +1703,14 @@ bool Recompiler::Recompile(
+         println("{}, {}.u32);", int32_t(insn.operands[1]), temp());
+         break;
+ 
++    case PPC_INST_STFSU:
++        printSetFlushMode(false);
++        println("\t{}.f32 = float({}.f64);", temp(), f(insn.operands[0]));
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U32({}, {}.u32);", ea(), temp());
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
+     case PPC_INST_STFSX:
+         printSetFlushMode(false);
+         println("\t{}.f32 = float({}.f64);", temp(), f(insn.operands[0]));
+@@ -1575,6 +1727,18 @@ bool Recompiler::Recompile(
+         println("{}, {}.u16);", int32_t(insn.operands[1]), r(insn.operands[0]));
+         break;
+ 
++    case PPC_INST_STHU:
++        println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U16({}, {}.u16);", ea(), r(insn.operands[0]));
++        println("\t{}.u32 = {};", r(insn.operands[2]), ea());
++        break;
++
++    case PPC_INST_STHUX:
++        println("\t{} = {}.u32 + {}.u32;", ea(), r(insn.operands[1]), r(insn.operands[2]));
++        println("\tPPC_STORE_U16({}, {}.u16);", ea(), r(insn.operands[0]));
++        println("\t{}.u32 = {};", r(insn.operands[1]), ea());
++        break;
++
+     case PPC_INST_STHBRX:
+         print("{}", mmioStore() ? "\tPPC_MM_STORE_U16(" : "\tPPC_STORE_U16(");
+         if (insn.operands[1] != 0)
+@@ -1713,6 +1877,16 @@ bool Recompiler::Recompile(
+         println("\t{}.s64 = {} - {}.s64;", r(insn.operands[0]), int32_t(insn.operands[2]), r(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_SUBFZE:
++        // rD = ~rA + CA. 32-bit carry out happens only when ~rA is 0xFFFFFFFF
++        // (rA == 0) and CA is set; compute it before writing rD (aliasing).
++        println("\t{}.u8 = ({}.u32 == 0) & {}.ca;", temp(), r(insn.operands[1]), xer());
++        println("\t{}.s64 = ~{}.s64 + {}.ca;", r(insn.operands[0]), r(insn.operands[1]), xer());
++        println("\t{}.ca = {}.u8;", xer(), temp());
++        if (strchr(insn.opcode->name, '.'))
++            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
++        break;
++
+     case PPC_INST_SYNC:
+         // no op
+         break;
+@@ -1747,6 +1921,17 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.s16, simde_mm_adds_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VADDSWS:
++        // No SSE saturated 32-bit add; scalar with a 64-bit intermediate,
++        // same shape as VSUBSWS below. Per-element read-before-write keeps
++        // it safe when vD aliases a source.
++        for (size_t i = 0; i < 4; i++)
++        {
++            println("\t{}.s64 = int64_t({}.s32[{}]) + int64_t({}.s32[{}]);", temp(), v(insn.operands[1]), i, v(insn.operands[2]), i);
++            println("\t{}.s32[{}] = {}.s64 > INT_MAX ? INT_MAX : {}.s64 < INT_MIN ? INT_MIN : {}.s64;", v(insn.operands[0]), i, temp(), temp(), temp());
++        }
++        break;
++
+     case PPC_INST_VADDUBM:
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_add_epi8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+@@ -1798,6 +1983,16 @@ bool Recompiler::Recompile(
+             println("simde_mm_load_ps({}.f32)));", v(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_VCTUXS:
++    case PPC_INST_VCFPUXWS128:
++        printSetFlushMode(true);
++        print("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_vctuxs(", v(insn.operands[0]));
++        if (insn.operands[2] != 0)
++            println("simde_mm_mul_ps(simde_mm_load_ps({}.f32), simde_mm_set1_ps({}))));", v(insn.operands[1]), 1u << insn.operands[2]);
++        else
++            println("simde_mm_load_ps({}.f32)));", v(insn.operands[1]));
++        break;
++
+     case PPC_INST_VCFSX:
+     case PPC_INST_VCSXWFP128:
+     {
+@@ -1834,7 +2029,23 @@ bool Recompiler::Recompile(
+ 
+     case PPC_INST_VCMPBFP:
+     case PPC_INST_VCMPBFP128:
+-        println("\t__builtin_debugtrap();");
++        // Bounds check: per lane, bit31 = (a > b), bit30 = (a < -b); NaN sets
++        // both (cmpnle/cmpnge are true for unordered). vcmpbfp. only defines
++        // CR6's "all in bounds" bit, tested via the none-set (eq) side of
++        // setFromMask on the OR of the two violation masks.
++        printSetFlushMode(true);
++        println("\t{{");
++        println("\t\tsimde__m128 a = simde_mm_load_ps({}.f32);", v(insn.operands[1]));
++        println("\t\tsimde__m128 b = simde_mm_load_ps({}.f32);", v(insn.operands[2]));
++        println("\t\tsimde__m128 gt = simde_mm_cmpnle_ps(a, b);");
++        println("\t\tsimde__m128 lt = simde_mm_cmpnge_ps(a, simde_mm_xor_ps(b, simde_mm_set1_ps(-0.0f)));");
++        println("\t\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_or_si128(simde_mm_and_si128(simde_mm_castps_si128(gt), simde_mm_set1_epi32(0x80000000)), simde_mm_and_si128(simde_mm_castps_si128(lt), simde_mm_set1_epi32(0x40000000))));", v(insn.operands[0]));
++        if (strchr(insn.opcode->name, '.'))
++        {
++            println("\t\t{}.setFromMask(simde_mm_or_ps(gt, lt), 0xF);", cr(6));
++            println("\t\t{}.lt = 0;", cr(6)); // architecturally 0 for vcmpbfp.
++        }
++        println("\t}}");
+         break;
+ 
+     case PPC_INST_VCMPEQFP:
+@@ -2063,6 +2274,27 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packus_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+         break;
+ 
++    case PPC_INST_VPKSWSS:
++    case PPC_INST_VPKSWSS128:
++        // Operand order swapped (vB first) for the same whole-vector-reversal
++        // reason as VPKSHUS above.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.s16, simde_mm_packs_epi32(simde_mm_load_si128((simde__m128i*){}.s32), simde_mm_load_si128((simde__m128i*){}.s32)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
++    case PPC_INST_VPKUHUS:
++    case PPC_INST_VPKUHUS128:
++        // packus_epi16 saturates a *signed* source, so clamp the unsigned
++        // halfwords to 0xFF first; the clamped values are non-negative and
++        // survive the signed pack exactly.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packus_epi16(simde_mm_min_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_set1_epi16(0xFF)), simde_mm_min_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_set1_epi16(0xFF))));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
++    case PPC_INST_VPKUWUS:
++    case PPC_INST_VPKUWUS128:
++        // Same unsigned-clamp-then-signed-pack trick as VPKUHUS, one size up.
++        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_packus_epi32(simde_mm_min_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_set1_epi32(0xFFFF)), simde_mm_min_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_set1_epi32(0xFFFF))));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
++        break;
++
+     case PPC_INST_VREFP:
+     case PPC_INST_VREFP128:
+         // TODO: see if we can use rcp safely
+@@ -2104,6 +2336,10 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_VSEL:
++    case PPC_INST_VSEL128:
++        // VMX128 vsel128 encodes the select mask as VS128 (== vD); the
++        // disassembler puts it in operands[3] either way, so both forms share
++        // this emission.
+         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_or_si128(simde_mm_andnot_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)), simde_mm_and_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8))));", v(insn.operands[0]), v(insn.operands[3]), v(insn.operands[1]), v(insn.operands[3]), v(insn.operands[2]));
+         break;
+ 
+@@ -2185,6 +2421,10 @@ bool Recompiler::Recompile(
+         println("\tsimde_mm_store_ps({}.f32, simde_mm_sub_ps(simde_mm_load_ps({}.f32), simde_mm_load_ps({}.f32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+         break;
+ 
++    case PPC_INST_VSUBSHS:
++        println("\tsimde_mm_store_si128((simde__m128i*){}.s16, simde_mm_subs_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
++        break;
++
+     case PPC_INST_VSUBSWS:
+         // TODO: vectorize
+         for (size_t i = 0; i < 4; i++)
+@@ -2318,8 +2558,7 @@ bool Recompiler::Recompile(
+ #if 1
+     if (strchr(insn.opcode->name, '.'))
+     {
+-        int lastLine = out.find_last_of('\n', out.size() - 2);
+-        if (out.find("cr0", lastLine + 1) == std::string::npos && out.find("cr6", lastLine + 1) == std::string::npos)
++        if (out.find("cr0", outSizeBeforeInstruction) == std::string::npos && out.find("cr6", outSizeBeforeInstruction) == std::string::npos)
+             fmt::println("{} at {:X} has RC bit enabled but no comparison was generated", insn.opcode->name, base);
+     }
+ #endif
+diff --git a/XenonUtils/ppc_context.h b/XenonUtils/ppc_context.h
+index 31a86cd..c0841fe 100644
+--- a/XenonUtils/ppc_context.h
++++ b/XenonUtils/ppc_context.h
+@@ -682,6 +682,22 @@ inline simde__m128i simde_mm_vctsxs(simde__m128 src1)
+     return simde_mm_andnot_si128(simde_mm_castps_si128(xmm2), simde_mm_castps_si128(dest));
+ }
+ 
++// vctuxs: float -> u32 with saturation (NaN and negatives -> 0, >= 2^32 -> 0xFFFFFFFF).
++// cvttps_epi32 only reaches INT_MAX, so lanes >= 2^31 are converted with the high
++// bit split off (subtract 2^31, convert, add it back as an integer).
++inline simde__m128i simde_mm_vctuxs(simde__m128 src1)
++{
++    simde__m128 zero = simde_mm_setzero_ps();
++    // max_ps returns the second operand when either input is NaN, so this also maps NaN to 0
++    simde__m128 clamped = simde_mm_max_ps(src1, zero);
++    simde__m128 two31 = simde_mm_set1_ps(2147483648.0f);
++    simde__m128i lo = simde_mm_cvttps_epi32(clamped);
++    simde__m128i hi = simde_mm_add_epi32(simde_mm_cvttps_epi32(simde_mm_sub_ps(clamped, two31)), simde_mm_set1_epi32(INT_MIN));
++    simde__m128i result = simde_mm_blendv_epi8(lo, hi, simde_mm_castps_si128(simde_mm_cmpge_ps(clamped, two31)));
++    // saturate lanes at or above 2^32 (cmpge produces all-ones = 0xFFFFFFFF)
++    return simde_mm_or_si128(result, simde_mm_castps_si128(simde_mm_cmpge_ps(clamped, simde_mm_set1_ps(4294967296.0f))));
++}
++
+ inline simde__m128i simde_mm_vsr(simde__m128i a, simde__m128i b)
+ {
+     b = simde_mm_srli_epi64(simde_mm_slli_epi64(b, 61), 61);
+-- 
+2.55.0
+
