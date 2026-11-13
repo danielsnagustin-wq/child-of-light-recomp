@@ -1,0 +1,124 @@
+From e7ac625212e2c0e0e3eb9d6a7753867d14ae6d7e Mon Sep 17 00:00:00 2001
+From: wivi514 <wivi514@hotmail.com>
+Date: Wed, 5 Aug 2026 13:23:19 -0400
+Subject: [PATCH 12/14] Lower sync/lwsync/eieio to real barriers instead of
+ nothing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+All three memory barriers were `// no op`. For the hardware half that is
+correct on x86-64 and it is the wrong answer overall, because a recompiled
+image's memory ordering is not decided by the host CPU alone: every guest
+access becomes a plain C++ load or store through `base`, and a construct
+that generates no code constrains the host compiler not at all. At -O2 clang
+may move stores across a barrier the guest placed to stop exactly that.
+
+What breaks is every release-publish idiom in a title:
+
+    ...fill a command buffer...
+    lwsync                     ; make those stores visible FIRST
+    stw   r11, 0x58(r30)       ; then publish the index a consumer polls
+
+Reordered, the consumer walks a buffer that is not written yet. Nothing
+faults at the reordering; the damage lands later, on another thread.
+
+The two barriers need DIFFERENT lowerings and it is easy to get backwards:
+
+  lwsync  orders load-load, load-store, store-store. x86-64 TSO already gives
+          all three, so this needs a COMPILER barrier only —
+          std::atomic_signal_fence, which emits no instruction.
+  sync    additionally orders store-load, the one reordering x86 does. This
+          needs a real fence — std::atomic_thread_fence.
+  eieio   orders stores to device memory; a compiler barrier is the honest
+          floor for MMIO modelled as ordinary host memory.
+
+Lowering lwsync to a full thread fence would be correct but would put an
+mfence on hot guest paths for an ordering the hardware already provides;
+lowering sync to a signal fence only would be silently wrong on the single
+ordering that matters.
+
+Not changed, and worth knowing: lwarx is a plain non-atomic load, which is
+safe only because stwcx. is a __sync_bool_compare_and_swap against the value
+it loaded — a correct CAS emulation of the reservation pair, and a full
+barrier in its own right. So lock ACQUIRE was always ordered; lock RELEASE,
+a plain stw, was not.
+
+ppc_context.h gains #include <atomic>.
+
+Verified on Dead Rising 2: Case Zero — 51 lwsync, 11 sync, 14 eieio, all
+lowered as intended, image regenerates with a silent log, zero dropped
+branches, zero unlowered switches, and both hardware-capture gates unchanged.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ XenonRecomp/recompiler.cpp | 26 +++++++++++++++++++++++---
+ XenonUtils/ppc_context.h   |  1 +
+ 2 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index d77e311..c57b162 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -942,7 +942,11 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_EIEIO:
+-        // no op
++        // Orders stores to device memory. Our MMIO is ordinary host memory polled by
++        // other threads, so a compiler barrier is the honest floor: it stops the host
++        // compiler reordering the stores the guest deliberately separated, and claims
++        // nothing about a memory controller we do not model.
++        println("\tstd::atomic_signal_fence(std::memory_order_seq_cst);");
+         break;
+ 
+     case PPC_INST_EQV:
+@@ -1378,7 +1382,19 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_LWSYNC:
+-        // no op
++        // A COMPILER barrier, not a hardware one, and the distinction is the whole
++        // point. `lwsync` orders load-load, load-store and store-store; x86-64's TSO
++        // already guarantees all three in hardware, so no fence instruction is needed
++        // — but the C++ we emit is plain loads and stores through `base`, and nothing
++        // stops the host compiler from reordering them across a construct that
++        // generates no code. Emitting nothing at all (the previous behaviour) makes
++        // every release-publish idiom in the guest unsound at -O2: the classic "fill
++        // the buffer, lwsync, publish the index" becomes "publish the index, fill the
++        // buffer", and the consumer thread walks half-written data.
++        //
++        // atomic_signal_fence is exactly the right tool: it constrains the compiler
++        // and emits no instruction.
++        println("\tstd::atomic_signal_fence(std::memory_order_seq_cst);");
+         break;
+ 
+     case PPC_INST_LWZ:
+@@ -1948,7 +1964,11 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_SYNC:
+-        // no op
++        // `sync` (hwsync) is the heavyweight barrier: it additionally orders
++        // store-load, which is the ONE ordering x86-64's TSO does not provide. So
++        // unlike lwsync this needs a real fence instruction, not just a compiler
++        // barrier — atomic_thread_fence(seq_cst) lowers to an mfence or a locked op.
++        println("\tstd::atomic_thread_fence(std::memory_order_seq_cst);");
+         break;
+ 
+     case PPC_INST_TDLGEI:
+diff --git a/XenonUtils/ppc_context.h b/XenonUtils/ppc_context.h
+index b67d434..75a73d1 100644
+--- a/XenonUtils/ppc_context.h
++++ b/XenonUtils/ppc_context.h
+@@ -5,6 +5,7 @@
+ #error "ppc_config.h must be included before ppc_context.h"
+ #endif
+ 
++#include <atomic> // sync/lwsync/eieio lower to std::atomic_*_fence
+ #include <climits>
+ #include <cmath>
+ #include <csetjmp>
+-- 
+2.55.0
+
