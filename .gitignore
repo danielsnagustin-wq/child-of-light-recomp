@@ -1,0 +1,42 @@
+# Game files — NEVER committed. The user supplies their own copy.
+private/
+*.xex
+*.xexp
+*.ipk
+*.rdpk
+
+# Generated C++ from XenonRecomp / ReXGlue codegen — never committed.
+ppc/
+out/
+rex/generated/
+generated/
+
+# Build outputs
+build/
+out-*/
+*.o
+*.a
+*.so
+*.dll
+*.exe
+
+# Analysis outputs (produced by the CI workflow, kept as artifacts)
+analysis/
+
+# Cloned tools (re-cloned by CI; later this may become a git submodule)
+tools/XenonRecomp/
+tools/XenosRecomp/
+tools/rexglue/
+
+# Android / Gradle (Phase 1+)
+local.properties
+*.apk
+*.aab
+.gradle/
+app/build/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
