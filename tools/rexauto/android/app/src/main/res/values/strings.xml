@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name is overridden per build from Gradle (resValue) -->
+    <string name="edition">Edición Android · Title ID %1$s</string>
+    <string name="hero_tagline">Un cuento de luz bajo la aurora boreal</string>
+    <string name="section_import">Importar el juego</string>
+    <string name="section_settings">Ajustes</string>
+    <string name="section_data">Registros y datos</string>
+    <string name="status_label">Estado del juego</string>
+    <string name="setup_help">Esta app es una recompilación nativa de <b>%1$s</b> (Xbox 360, Title ID %2$s). No contiene datos del juego.\n\nAñade TU copia: toca «Elegir juego» y elige la imagen del disco (.iso), el paquete XBLA o su default.xex, o elige una carpeta ya extraída. Los archivos se descomprimen en el almacenamiento propio de la app, sin permisos especiales. Cualquier otro juego será rechazado.</string>
+    <string name="status_idle">Falta importar el juego</string>
+    <string name="status_ready">✓ Juego instalado\n%1$s</string>
+    <string name="status_reading">Leyendo %1$s…</string>
+    <string name="status_copying">Copiando carpeta…</string>
+    <string name="status_bundled_copy">Copiando el juego incluido</string>
+    <string name="setup_help_full">Esta app es una recompilación nativa de <b>%1$s</b> (Xbox 360, Title ID %2$s). El juego viene incluido en la app y se importa solo la primera vez que se abre, sin permisos especiales.</string>
+    <string name="status_copied">Copiados %1$d archivo(s)… %2$s</string>
+    <string name="status_done">Juego instalado</string>
+    <string name="play">▶  JUGAR</string>
+    <string name="pick_iso">Elegir juego (ISO / XBLA / default.xex)</string>
+    <string name="pick_folder">Elegir carpeta</string>
+    <string name="graphics">Gráficos y rendimiento</string>
+    <string name="logs">Registros</string>
+    <string name="crash_title">El juego se cerró la última vez</string>
+    <string name="share">Compartir</string>
+    <string name="copy">Copiar</string>
+    <string name="copied">Copiado al portapapeles</string>
+    <string name="reset">Quitar archivos</string>
+    <string name="reset_confirm">¿Borrar los archivos del juego extraídos en el almacenamiento de esta app?</string>
+    <string name="err_no_xex_in_iso">La imagen del disco no tiene default.xex: no es un disco de juego de Xbox 360.</string>
+    <string name="err_no_xex_in_folder">No se encontró default.xex en esa carpeta.</string>
+    <string name="err_not_iso">%1$s no es ni una ISO de Xbox 360 ni un default.xex.</string>
+    <string name="err_wrong_game">Eso es <b>%1$s</b>. Esta app está hecha para <b>%2$s</b> (Title ID %3$s): elige la imagen del disco de ese juego.</string>
+    <string name="err_generic">La importación falló.</string>
+    <string name="err_no_xex_in_stfs">%1$s es un paquete de Xbox 360 pero no contiene default.xex (¿una partida guardada, un DLC o una actualización?).</string>
+    <string name="err_god_needs_folder">%1$s es una imagen Games on Demand de varias partes. Usa <b>Elegir carpeta</b> y elige la carpeta que contiene este archivo y su carpeta «%1$s.data».</string>
+    <string name="log_empty">(aún no hay registro)</string>
+
+    <string name="gfx_scale">Resolución interna</string>
+    <string name="gfx_effect">Filtro de salida</string>
+    <string name="gfx_video_mode">Modo de vídeo del juego</string>
+    <string name="gfx_vsync">V-Sync (más suave, limita los FPS)</string>
+    <string name="gfx_letterbox">Mantener proporción (bandas negras)</string>
+    <string name="gfx_tolerant">Modo tolerante (omitir funciones que faltan en vez de fallar)</string>
+    <string name="gfx_extra">Avanzado: opciones extra del runtime (clave=valor por línea)</string>
+
+    <!-- Virtual gamepad (from hells-gate-recomp-android) -->
+    <string name="pad_settings_title">Controles en pantalla</string>
+    <string name="pad_size">Tamaño: %1$d%%</string>
+    <string name="pad_opacity">Opacidad: %1$d%%</string>
+    <string name="pad_haptics">Vibrar al tocar</string>
+    <string name="pad_reset">Por defecto</string>
+    <string name="pad_hide">Ocultar</string>
+    <string name="gpu_driver">Controlador GPU</string>
+    <string name="gpu_driver_system">Controlador del sistema (por defecto)</string>
+    <string name="gpu_driver_import">Importar zip…</string>
+    <string name="gpu_driver_installed">Controlador %1$s instalado y seleccionado</string>
+    <string name="gpu_driver_remove">¿Quitar el controlador %1$s?</string>
+    <string name="gpu_driver_not_adreno">Los controladores alternativos solo funcionan en GPU Qualcomm Adreno (Snapdragon). Este dispositivo no parece tener una: la elección siguiente probablemente se ignore y se usará el controlador del sistema.</string>
+    <string name="err_driver_zip">%1$s no es un paquete de controlador: se esperaba un zip con meta.json y un libvulkan_*.so (los zips de controladores Turnip / Adreno de Yuzu, Skyline, Dolphin o Winlator sirven tal cual).</string>
+    <string name="gfx_orientation">Orientación de pantalla al jugar</string>
+    <string name="orient_portrait">Vertical</string>
+    <string name="orient_landscape">Horizontal (por defecto)</string>
+    <string name="orient_auto">Seguir la rotación del dispositivo</string>
+    <string name="gfx_preset">Preajuste de rendimiento</string>
+    <string name="preset_performance">Rendimiento (por defecto en teléfonos)</string>
+    <string name="preset_balanced">Equilibrado</string>
+    <string name="preset_accuracy">Precisión (valores de escritorio)</string>
+    <string name="gfx_fps_cap">Límite de fotogramas</string>
+    <string name="fps_off">Sin límite (frecuencia de pantalla)</string>
+    <string name="fps_30">30 FPS (más fresco y estable)</string>
+    <string name="fps_60">60 FPS</string>
+
+    <string-array name="gfx_scale_options">
+        <item>1x (720p, la más rápida)</item>
+        <item>2x (1440p)</item>
+        <item>3x (2160p)</item>
+    </string-array>
+    <string-array name="gfx_effect_options">
+        <item>Bilineal (la más barata)</item>
+        <item>AMD CAS (nitidez)</item>
+        <item>AMD FSR (reescalado)</item>
+    </string-array>
+    <string-array name="gfx_mode_options">
+        <item>1280x720 (por defecto)</item>
+        <item>1920x1080 (pesado)</item>
+        <item>1024x576 (más ligero)</item>
+        <item>960x540 (el más ligero)</item>
+    </string-array>
+</resources>
