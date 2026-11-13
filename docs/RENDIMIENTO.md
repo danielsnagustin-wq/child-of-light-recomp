@@ -32,10 +32,9 @@ si el original corría a 60 fps, el port también debe correr a 60 fps.
 3. **Presets Performance / Balanced / Accuracy** (los del launcher de
    rexauto): Performance por defecto en gama media, Accuracy solo en gama
    alta.
-4. **Shaders bajo demanda, no precompilación total**: la lección del launcher
-   Vita3K — precompilar todos los shaders al arrancar costaba 1,5–2,5 min de
-   pantalla negra. En el port: compilar al usar, con caché persistente, y
-   nunca bloquear el primer frame.
+4. **Shaders bajo demanda, no precompilación total**: precompilar todos los
+   shaders al arrancar costaba 1,5–2,5 min de pantalla negra. En el port:
+   compilar al usar, con caché persistente, y nunca bloquear el primer frame.
 5. **Perfiles por GPU + detección automática + fallback nativo → emulado**
    (como Zandatsu): Adreno, Mali, Xclipse y otros; si el renderer nativo
    pierde el dispositivo, el launcher baja al modo emulado sin cerrar el
