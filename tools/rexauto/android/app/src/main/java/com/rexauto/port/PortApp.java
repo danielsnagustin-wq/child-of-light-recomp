@@ -12,11 +12,16 @@ import android.app.Application;
  * needs the fd on every launch, before MainActivity starts the game.
  * In normal/dev builds the APK has no bundled asset and this is a
  * no-op (one asset listing, no native library load).
+ *
+ * Full builds also stage the bundled DLC packages (DlcAssets.ensureStaged,
+ * M1 v1.4.2): assets/dlc/* are copied to <external>/data/dlc/ so the
+ * native installer can mount them. Same rule — here, every launch.
  */
 public class PortApp extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
         StfsAsset.ensureOpen(getAssets());
+        DlcAssets.ensureStaged(this);
     }
 }
