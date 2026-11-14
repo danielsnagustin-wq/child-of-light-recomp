@@ -274,8 +274,11 @@ void InstallCrashReporter(const std::string& log_dir) {
 // pc into a lock-free open-addressing table. Every 20 s a report is written to
 // <logs>/profile.txt: per-thread CPU%, per-core clock (throttling), and the
 // top sampled host functions resolved through dladdr (sub_XXXXXXXX = guest
-// function, librexruntime/librexgpu = runtime). Costs well under 1% CPU.
-// Disabled with settings.txt `env.REX_PROFILE=0`.
+// function, librexruntime/librexgpu = runtime). Claimed to cost well under 1%
+// CPU, but the v1.4.1 profile on this phone shows the sampler thread itself
+// at 33.7% of one core. Disabled by setting REX_PROFILE=0 in the environment
+// before prof::Start runs; settings.txt is read after Start, so an env line
+// there is too late.
 namespace prof {
 constexpr size_t kSlots = 1 << 16;  // power of two
 struct Slot { std::atomic<uintptr_t> pc; std::atomic<uint32_t> n; };
@@ -541,6 +544,12 @@ int RunAndroidApp() {
   // user has seen it (or chose to play again) -- start clean.
   std::filesystem::remove(log_dir + "/crash.txt", ec);
   InstallCrashReporter(log_dir);
+  // The built-in sampler costs a third of a core on this phone (rex-profiler
+  // 33.7% in the v1.4.1 profile) for diagnostics we already have, so it is
+  // off in this build. Must be set here: prof::Start reads the variable and
+  // settings.txt is only read afterwards, so an env line there is too late.
+  // To re-enable profiling, remove this line.
+  setenv("REX_PROFILE", "0", 1);
   prof::Start(log_dir);
 
   rex::SetAndroidApplicationContext(java_vm, SDL_GetAndroidActivity(), lib_dir.c_str());
@@ -619,6 +628,10 @@ int RunAndroidApp() {
   // while the cache warms up, but it stops the frame drops. Overridable
   // from settings.txt.
   args.emplace_back("--vulkan_async_skip_incomplete_frames=false");
+  // Only one pipeline-creation worker on phones: several workers saturate
+  // mobile drivers (up to crash/OOM); the cvar defaults to -1 (6 threads
+  // on this phone) and is set nowhere else. Overridable from settings.txt.
+  args.emplace_back("--vulkan_pipeline_creation_threads=1");
   for (auto& a : ReadSettingsArgs(external_dir + "/" + kSettingsFileName)) {
     ALOGI("setting: %s", a.c_str());
     args.emplace_back(std::move(a));
