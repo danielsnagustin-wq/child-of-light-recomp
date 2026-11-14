@@ -32,7 +32,7 @@ código real.
 | **1 — título sin llenar** | **NO es el presentador** (exonerado por tres vías): el juego dibuja el fondo del título solo en el 53% superior de su propia imagen de salida | **Sin arreglo en v1.4** (mecanismo dentro del guest, sin identificar). Añadido log de diagnóstico que decide el caso en el teléfono. Ver §4. |
 | **6 — banda blanca / texturas** | Hipótesis nº 1: draws con vertex memexport que fallan individualmente en Mali; nº 2: fallback DXT (4× VRAM/banda); nº 3: frame-skip por placeholders | **Sin causa señalada** (falta el log del teléfono). Frame-skip desactivado por defecto (eso también ataca los ~6 fps). Ver §5. |
 | **3 — se salta intro + menú** | (a) Las películas WMV3 **no tienen decodificador** en ReXGlue (`XamLoadExtraAVCodecs2` es un stub); (b) el menú que se salta no tiene causa VFS encontrada | **La intro SEGUIRÁ saltándose en v1.4** (falta un decodificador WMV3/WMA: trabajo grande, separado). El menú sigue sin explicación. Ver §6. |
-| **7 — `plan_logo.es.srt` no se encuentra** | **El fichero no existe en ningún sitio** (ni suelto ni en ningún `.ipk`) | **Pista falsa**: el `0xc000000f` es ruido esperado. Los .srt que sí existen los lee el propio UbiArt. Ver §6. |
+| **7 — `plan_logo.es.srt` no se encuentra** | **El fichero no existe en ningún sitio** (ni suelto ni en ningún `.ipk`) | **Pista falsa**: el `0xc000000f` es ruido esperado. Los .srt que sí existen los lee el propio el motor. Ver §6. |
 
 **Lo que NO trae v1.4 (decidido con motivo, ver §9):** decodificador WMV3/WMA,
 `VkPipelineCache` persistente, register-as-local (re-recomp completo),
@@ -301,7 +301,7 @@ de 1 fila en y≈576 (fila 503 media 73,6 → fila 505 media 3,4), pilares
 x 0–184 y 2151–2340. "Cargando..." (52960): logo redondo completo centrado
 en (≈1170, 540, r≈139), cortado en y≈577; texto "Cargando..." visible
 debajo, en y≈990. Banner "Pulsa A": visible DEBAJO del corte, en y real
-851–920. Logo UbiArt (52954): CORRECTO, letterbox 16:9 completo. Gameplay
+851–920. Logo el motor (52954): CORRECTO, letterbox 16:9 completo. Gameplay
 (52963/52962): CORRECTO, 1920×1080 con pilares. Coordenadas del guest: el
 corte en y presentada 576 ↔ y guest 384 (÷1,5; fotograma guest 1280×720).
 
@@ -453,7 +453,7 @@ existe en ningún sitio** (la única coincidencia es `plan_logo.videod` en
 esperado** del cargador sondeando un fichero que el juego original tampoco
 tiene. **El bug 7, tal como estaba formulado, era una pista falsa para el
 logo.** Los subtítulos de las cinemáticas (que SÍ existen dentro de
-`child_of_light_x360.ipk`) los lee el propio motor UbiArt con su sistema de
+`child_of_light_x360.ipk`) los lee el propio motor el motor con su sistema de
 ficheros en capas (sueltas primero, luego IPK); el VFS solo tiene que
 servir los bytes del `.ipk` correctamente, cosa que el `HostPathFile` de
 v1.3 ya hace. No hay literales `movie`/`wmv`/`plan_logo`/`.srt`/`ipk` en el
@@ -524,7 +524,7 @@ para la variante normal (desarrollo).
 | Re-crear swapchain ante SUBOPTIMAL | El bug de Origins NO existe aquí (ver §4.3) | Contar re-creaciones en el log |
 
 **Frase clave de Gears 2 (informe de ports):** "No se conoce ningún port
-Android jugable sobre la ruta GPU genérica de ReXGlue." CoL ya es la
+Android jugable sobre la ruta GPU genérica de ReXGlue." el título ya es la
 excepción: el juego SE JUEGA sobre la ruta Xenos emulada. Eso no invalida
 el camino — significa que el renderer nativo es la apuesta de fondo, no el
 primer paso: primero se agotan los arreglos baratos sobre la ruta que ya
@@ -649,7 +649,7 @@ corazón, local). **NUNCA pushear `gradle.properties` ni el keystore.**
   `com.rexauto.port.MainActivity` (port oficial: tocar el icono entra
   directo al juego).
 - **apksigner verify OK** (v1+v2), firmante = keystore corazón
-  (CN=`Child of Light <3`, SHA-256 `3768a83d38837f424138c1570f77e111bd1777ff6df049d476e562a46bb189ab`).
+  (CN=`el título <3`, SHA-256 `3768a83d38837f424138c1570f77e111bd1777ff6df049d476e562a46bb189ab`).
 - **Contenidos verificados:** 25 entradas; `lib/arm64-v8a/libmain.so`,
   `lib/arm64-v8a/librexgpu-xenos.so`, `assets/hero_bg.jpg` presentes; sin
   `assets/game.stfs` (correcto: la normal no lleva el juego dentro).
@@ -676,7 +676,7 @@ corazón, local). **NUNCA pushear `gradle.properties` ni el keystore.**
   104.857.600 B, `part15` de 37.164.992 B) en `private/v14-full-parts/`;
   reensamblaje verificado localmente (`cat part* | md5sum` =
   `8c8dfc4944c4fb9b4a614c384fa7eb02`, exacto).
-- **Drive (PRIVADO, verificado):** carpeta "Child of Light recomp v1.4-full"
+- **Drive (PRIVADO, verificado):** carpeta "el port v1.4-full"
   (ID `1nbjnBy8YY-NSyygpSj9lYHMaUQVR_Zgc`), **19 ficheros, TODOS
   `shared: false`** (verificado por listado: 16 partes con tamaños exactos
   + MD5SUMS + README + APK normal v1.4). La part10 falló en el primer
