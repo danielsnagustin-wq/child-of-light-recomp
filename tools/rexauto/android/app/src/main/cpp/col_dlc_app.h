@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <exception>
 #include <memory>
+
+#include <rex/logging.h>
 
 #include "childoflight_app.h"
 #include "col_dlc_installer.h"
@@ -36,5 +39,17 @@ class ColDlcApp : public ChildOfLightApp {
   }
 
  protected:
-  void OnPostSetup() override { col_dlc::InstallDlcPackages(runtime()); }
+  void OnPostSetup() override {
+    // Hunt 4 P1-1: the DLC scan must never kill the app at startup. The
+    // scan itself uses error_code overloads, but any future throw here
+    // would reach std::terminate (android_main.cpp) and abort before the
+    // game boots, so catch and continue without DLCs instead.
+    try {
+      col_dlc::InstallDlcPackages(runtime());
+    } catch (const std::exception& e) {
+      REXLOG_ERROR("DLC install failed (continuing without DLCs): {}", e.what());
+    } catch (...) {
+      REXLOG_ERROR("DLC install failed with an unknown exception (continuing without DLCs)");
+    }
+  }
 };
