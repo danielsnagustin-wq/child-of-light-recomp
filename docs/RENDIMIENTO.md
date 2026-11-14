@@ -15,7 +15,7 @@ si el original corría a 60 fps, el port también debe correr a 60 fps.
 ## Por qué 60 fps es realista (y no un deseo)
 
 - La versión de Xbox 360 corría a **720p y 60 fps estables** (Digital Foundry).
-- UbiArt es un juego 2D/2.5D pintado a mano: ligero de GPU comparado con un
+- el motor es un juego 2D/2.5D pintado a mano: ligero de GPU comparado con un
   3D. El original pedía una GeForce 8800 GT (2007) en PC.
 - La CPU es nativa desde el primer día (el código PowerPC se recompila a
   ARM64); no hay emulación de CPU que se coma los frames.
