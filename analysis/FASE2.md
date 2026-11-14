@@ -1,4 +1,4 @@
-# Fase 2 — APK Android del port nativo de Child of Light
+# Fase 2 — APK Android del port nativo del título
 
 **Fecha:** 2026-11-13 (trabajo nocturno, usuario dormido)
 **Entrada:** C++ generado de la Fase 1 (`recomp/ppc/`: 299 TUs + `ppc_func_mapping.cpp`, 209 MB, 0 errores, XenonRecomp + parches 0001–0019)
@@ -118,12 +118,12 @@ El workflow del repo (`.github/workflows/recompile-android-rexauto.yml`) restaur
 2. **Perfil Mali-G57 / renderer nativo** (`docs/RENDIMIENTO.md`): si el renderer nativo pierde el dispositivo, activar el fallback nativo → emulado (diseño Zandatsu) y el perfil de 12 puntos (Vulkan 1.1, 4 descriptor sets, sin `shaderInt64`, sin MSAA 2×, validation layer desde el día uno).
 3. **DLCs** (7 packs; solo Golem's Plight añade contenido jugable) e **Igniculus** (2º jugador / stick derecho en 360) — no implementados en esta build.
 4. **ReXGlue v0.10.0 vs v0.10.1:** reconciliar (v0.10.1 salió 2026-11-06, 4 PRs); no subir sin verificar cambios de API.
-5. **`detect_setjmp.py`:** verificar si CoL usa setjmp/longjmp o excepciones C++ (el port no encontró `ppc_setjmp`/`ppc_longjmp` en los TUs; falta el chequeo sobre la imagen).
+5. **`detect_setjmp.py`:** verificar si el título usa setjmp/longjmp o excepciones C++ (el port no encontró `ppc_setjmp`/`ppc_longjmp` en los TUs; falta el chequeo sobre la imagen).
 6. **Parche 0014 (fences ARM64 para lwsync/eieio):** no hizo falta para compilar (0012 ya baja sync/lwsync/eieio a barreras `std::atomic`); decidir si se añade por correctitud en runtime.
 7. **Publicar el andamiaje del port en el repo:** hoy `autoports/` y `recomp/ppc/` (209 MB) viven solo en esta VM. Publicar al menos `port/src/` + `port/generated/default/*.h` + `childoflight_init.cpp` + `sources.cmake` (sin los 299 TUs) para que el build sea reproducible desde el repo + una corrida local de XenonRecomp con los parches.
 8. **Actualizar el README del repo** ("Estado: Fase 0" ya no es verdad; la Fase 1 y la Fase 2 están hechas).
 9. **Verificar la subida a Drive desde el teléfono** (el enlace de arriba es privado; el usuario debe abrirlo con su cuenta).
-10. **Decidir el nombre visible de la app:** hoy el launcher dice "Child of Light" y el paquete es `com.rexauto.port.childoflight` (heredado de la plantilla rexauto).
+10. **Decidir el nombre visible de la app:** hoy el launcher dice "el título" y el paquete es `com.rexauto.port.childoflight` (heredado de la plantilla rexauto).
 
 ## Cómo reproducir el build
 
@@ -133,4 +133,4 @@ bash tools/run-release-build.sh   # log -> analysis/fase2-build-N.log
 # Salida: tools/rexauto/android/app/build/outputs/apk/release/app-release.apk
 ```
 
-El script fija `ANDROID_HOME`, `JAVA_HOME=jdk-17`, `GRADLE_USER_HOME`, `GRADLE_OPTS=-Djava.net.preferIPv4Stack=true`, `CMAKE_BUILD_PARALLEL_LEVEL=1`, y corre `gradle :app:assembleRelease --no-daemon --max-workers=1 --offline` con `-PrexName=childoflight -PrexTitle="Child of Light" -PrexTitleId=5841140D -PrexPortDir=…/autoports/childoflight/port -PrexSdkDir=…/sdk/rexglue-sdk -PrexVersionCode=1 -PrexVersionName=1.1`. Un build limpio tarda ~35–45 min en esta VM (SDK + 299 TUs + link LTO de ~8 min); un rebuild incremental tras tocar un header del PCH, ~17 min.
+El script fija `ANDROID_HOME`, `JAVA_HOME=jdk-17`, `GRADLE_USER_HOME`, `GRADLE_OPTS=-Djava.net.preferIPv4Stack=true`, `CMAKE_BUILD_PARALLEL_LEVEL=1`, y corre `gradle :app:assembleRelease --no-daemon --max-workers=1 --offline` con `-PrexName=childoflight -PrexTitle="el título" -PrexTitleId=[redactado] -PrexPortDir=…/autoports/childoflight/port -PrexSdkDir=…/sdk/rexglue-sdk -PrexVersionCode=1 -PrexVersionName=1.1`. Un build limpio tarda ~35–45 min en esta VM (SDK + 299 TUs + link LTO de ~8 min); un rebuild incremental tras tocar un header del PCH, ~17 min.
