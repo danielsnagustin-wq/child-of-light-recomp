@@ -368,7 +368,17 @@ public class VirtualPadView extends View {
         if (control >= 0) {
             mPressed[control] = true;
             mPressAt[control] = SystemClock.uptimeMillis();
-            performHaptic();
+            // Haptic once per press (hunt 4 P2-2): buttons and LB/RB pills
+            // vibrate in pressButtonOnce and the d-pad in setDpadMask, so
+            // vibrate here only for the paths that never vibrate
+            // themselves (sticks and the LT/RT trigger pills).
+            final int type = mControls[control].type;
+            if (type == PadGeometry.TYPE_STICK
+                    || (type == PadGeometry.TYPE_PILL
+                            && (control == PadGeometry.ID_LT
+                                    || control == PadGeometry.ID_RT))) {
+                performHaptic();
+            }
             updateControl(p);
             startTick();
         }
@@ -614,8 +624,12 @@ public class VirtualPadView extends View {
             mDownSent[control] = true;
             PadInputBridge.setButton(sdlButton, true);
             performHaptic();
-            // Pulse: the button goes UP again after one guest frame, so a
-            // tap is exactly one press for the level-polling game.
+            // Pulse: if the finger is still down after BUTTON_PULSE_MS the
+            // button goes UP again, so a hold is one press per pulse for the
+            // level-polling game. A tap shorter than the pulse ends on lift
+            // instead: releaseControl cancels the pending pulse, so there is
+            // NO guaranteed 180 ms DOWN window (hunt 4 P1-1); at ~6 fps a
+            // very short tap can still fall between two game polls.
             mPulseEndAt[control] = SystemClock.uptimeMillis() + BUTTON_PULSE_MS;
             startTick();
         }
