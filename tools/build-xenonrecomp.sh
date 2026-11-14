@@ -27,6 +27,16 @@ git checkout -- .
 git clean -fd
 git submodule update --init --recursive -q
 
+# Hunt 2, P2-8: si un parche falta del dir, el build saldria sin ese parche
+# y sin avisar. Hoy son 15 (0001, 0004-0006, 0008, 0011, 0012, 0015-0022).
+PATCH_COUNT=$(ls "$PATCHES"/*.patch | wc -l)
+[ "$PATCH_COUNT" -eq 15 ] || { echo "expected 15 patches in $PATCHES, found $PATCH_COUNT" >&2; exit 1; }
+
+# Clang >= 18 obligatorio (GCC falla en xbox.h:248, anonymous aggregate
+# with a member that has a constructor).
+CLANG_MAJOR=$(clang --version | head -1 | grep -oE '[0-9]+' | head -1)
+[ "$CLANG_MAJOR" -ge 18 ] || { echo "Clang >= 18 required, found $CLANG_MAJOR" >&2; exit 1; }
+
 for p in "$PATCHES"/*.patch; do
     [ -e "$p" ] || continue
     echo "applying $(basename "$p")"
