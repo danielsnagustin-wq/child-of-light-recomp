@@ -12,7 +12,8 @@ called on every iteration of the ring-buffer wait in sub_82B3A468 (7.7%).
 
 Emit a target-conditional CPU relax hint (CrownPark precedent, ~-26% CPU
 on their spin loop): `yield` on AArch64 (Android), `pause` on x86_64
-(desktop), sched_yield() anywhere else. A hint, not a deschedule: 16 bus
+(desktop), nothing anywhere else (no fallback: a third target gets no
+hint, as before this patch). A hint, not a deschedule: 16 bus
 cycles is tens of nanoseconds, and changing the scheduling would change
 guest timing. Note the outer loop in sub_82B3A468 itself has NO wait hint
 (pure lwz/cmplw/blt poll), so this patch softens the inner delay only;
@@ -27,7 +28,7 @@ diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
 index fa91527..b0beeae 100644
 --- a/XenonRecomp/recompiler.cpp
 +++ b/XenonRecomp/recompiler.cpp
-@@ -797,7 +797,31 @@ bool Recompiler::Recompile(
+@@ -797,7 +797,30 @@ bool Recompiler::Recompile(
          break;
  
      case PPC_INST_DB16CYC:
@@ -48,14 +49,13 @@ index fa91527..b0beeae 100644
 +        // wait hint (pure lwz/cmplw/blt poll), so this softens the inner
 +        // delay only; if the phone profile still shows that spin, the next
 +        // step is a targeted yield in that loop, not a bigger hammer here.
-+        // (The #else branch needs <sched.h>; it never triggers on our two
-+        // targets, x86_64 and AArch64.)
++        // (No #else fallback: emitting sched_yield() would need <sched.h>,
++        // which no generated file includes; a third target gets no hint,
++        // as before this patch. Hunt 3, P2-4.)
 +        println("#if defined(__aarch64__)");
 +        println("\t__asm__ volatile(\"yield\");");
 +        println("#elif defined(__x86_64__) || defined(_M_X64)");
 +        println("\t__builtin_ia32_pause();");
-+        println("#else");
-+        println("\tsched_yield();");
 +        println("#endif");
          break;
  
