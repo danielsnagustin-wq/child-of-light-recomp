@@ -1,0 +1,62 @@
+From: Aurora <aurora@child-of-light-recomp.local>
+Date: Fri, 13 Nov 2026 20:40:00 -0600
+Subject: [PATCH 22] recompiler: lower db16cyc to a CPU relax hint instead of
+ nothing
+
+db16cyc is the guest's "wait ~16 bus cycles" hint, used in spin loops.
+The recompiler emitted nothing for it, so every wait site became a hot
+busy-wait. The hottest example is sub_82B2E4C8 (10.5% of a core in the
+v1.4.1 phone profile): a bdnz delay loop of 4 iterations x 8 db16cyc,
+called on every iteration of the ring-buffer wait in sub_82B3A468 (7.7%).
+41 db16cyc sites in the whole game, all currently no-ops.
+
+Emit a target-conditional CPU relax hint (CrownPark precedent, ~-26% CPU
+on their spin loop): `yield` on AArch64 (Android), `pause` on x86_64
+(desktop), sched_yield() anywhere else. A hint, not a deschedule: 16 bus
+cycles is tens of nanoseconds, and changing the scheduling would change
+guest timing. Note the outer loop in sub_82B3A468 itself has NO wait hint
+(pure lwz/cmplw/blt poll), so this patch softens the inner delay only;
+if the phone profile still shows that spin, the next step is a targeted
+yield in that loop, not a bigger hammer here.
+
+The #if is emitted into the generated .cpp so it resolves at TARGET
+compile time: the recompiler runs on x86_64 but the generated code also
+targets Android/arm64.
+
+diff --git a/XenonRecomp/recompiler.cpp b/XenonRecomp/recompiler.cpp
+index fa91527..b0beeae 100644
+--- a/XenonRecomp/recompiler.cpp
++++ b/XenonRecomp/recompiler.cpp
+@@ -797,7 +797,31 @@ bool Recompiler::Recompile(
+         break;
+ 
+     case PPC_INST_DB16CYC:
+-        // no op
++        // db16cyc is the guest's "wait ~16 bus cycles" hint, used in spin
++        // loops. The hottest example is sub_82B2E4C8 (10.5% of a core in the
++        // v1.4.1 phone profile): a bdnz delay loop of 4 iterations x 8
++        // db16cyc, called on every iteration of the ring-buffer wait in
++        // sub_82B3A468 (7.7%). Emitting nothing turns each wait site into a
++        // hot busy-wait that burns a core while the producer thread waits
++        // for a timeslice. Emit a CPU relax hint (CrownPark precedent,
++        // ~-26% CPU on their spin loop). The hint is target-conditional:
++        // the recompiler runs on x86_64 but the generated code also targets
++        // Android/arm64, so the #if is emitted into the generated .cpp and
++        // resolves at target compile time. A hint, not a deschedule: 16 bus
++        // cycles is tens of nanoseconds, and a sched_yield() would change
++        // guest timing. Note the outer loop in sub_82B3A468 itself has NO
++        // wait hint (pure lwz/cmplw/blt poll), so this softens the inner
++        // delay only; if the phone profile still shows that spin, the next
++        // step is a targeted yield in that loop, not a bigger hammer here.
++        // (The #else branch needs <sched.h>; it never triggers on our two
++        // targets, x86_64 and AArch64.)
++        println("#if defined(__aarch64__)");
++        println("\t__asm__ volatile(\"yield\");");
++        println("#elif defined(__x86_64__) || defined(_M_X64)");
++        println("\t__builtin_ia32_pause();");
++        println("#else");
++        println("\tsched_yield();");
++        println("#endif");
+         break;
+ 
+     case PPC_INST_DCBF:
