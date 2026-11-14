@@ -257,3 +257,38 @@ ISO (usuario)
 - https://github.com/rexglue/rexglue-sdk (ReXGlue v0.10.0 fijado; v0.10.1 del 06-11-2026)
 - https://github.com/deivid22srk/hells-gate-recomp-android (parches Android usados por el job `apk`)
 - Informes previos del proyecto: `~/workspace/research/plan-port-nativo-col-2026-11-13.md`, `~/workspace/research/port-col-investigacion-completa-2026-11-13.md` (§4, rexauto a fondo), `~/workspace/research/metodos-mas-rapidos-port-col-2026-11-13.md`
+
+---
+
+## 11. Reconstruir la copia de trabajo (hunt 2, P1-4, 2026-11-13)
+
+La copia de trabajo `~/workspace/col-recomp/tools/rexauto/` es un árbol
+ENSAMBLADO (checkout rexauto@dac49b33 + overlay del repo + SDK + keystore),
+no un repo git. Si la VM se borra, se reconstruye con:
+
+    tools/assemble-android-tree.sh <dest> [--verify-against <arbol-vivo>]
+
+El script clona rexauto en el pin, copia SOLO los archivos trackeados del
+repo (vía `git ls-files`, o un clon temporal si el checkout no es git),
+corre nuestro `android_sdk.sh` (11 parches) y compara el resultado con el
+árbol vivo excluyendo build/, .cxx/, .gradle/, .git/, out/, el keystore y los archivos
+locales. Un diff no vacío = un archivo modificado en local que no está en
+el repo (el bug P0-2 de la caza: VirtualPadView.java con el fix del pulso).
+
+**Hallazgo de la prueba 1 (2026-11-13): los archivos SDK trackeados NO
+los reproduce ningún parche.** `android_sdk.sh` hace `rm -rf` del SDK y
+lo reconstruye solo desde los parches; los 17 archivos SDK trackeados y
+los 4 nuevos del STFS de Fase 5 (`stfs_data_file.h/cpp`, `stfs_asset.h`,
+`stfs_asset_source.cpp`) con sus ediciones a mano (STFS VFS, WaitMultiple,
+mprotect...) se perderían en un árbol reconstruido. Por eso el script hace
+un SEGUNDO overlay de los archivos trackeados DESPUÉS del SDK (los
+trackeados ganan a los parches por diseño) y el workflow de CI tiene el
+paso equivalente ("Re-overlay tracked SDK files"). La clave de caché del
+SDK incluye también `tools/rexauto/android/sdk/**`. Regla: si editas el
+SDK a mano, el archivo queda trackeado y el overlay lo preserva; el set
+de parches NO necesita reproducirlo.
+
+NO reconstruye: `autoports/childoflight/port` (código generado, no
+trackeado: regenerar con XenonRecomp/rexauto o copiarlo de un backup) ni
+`ci-release.jks` (keystore privado: copiarlo de su backup o restaurarlo
+del secreto CI_KEYSTORE_BASE64).
