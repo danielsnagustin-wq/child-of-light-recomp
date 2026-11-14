@@ -1,0 +1,32 @@
+diff --git a/src/system/xam/content_manager.cpp b/src/system/xam/content_manager.cpp
+--- a/src/system/xam/content_manager.cpp
++++ b/src/system/xam/content_manager.cpp
+@@ -555,11 +555,24 @@
+   while (remaining > 0) {
+     size_t bytes_read = 0;
+     size_t to_read = std::min(remaining, kBufferSize);
+-    in_file->ReadSync(std::span<uint8_t>(buffer.get(), to_read), offset, &bytes_read);
+-    if (bytes_read == 0) {
+-      break;
++    // Hunt 2 DLC, P1-3 (residual): ReadSync's status was ignored, a short
++    // read (bytes_read == 0) silently ended the loop as success, and
++    // fwrite's result was ignored too. A truncated file then returned
++    // SUCCESS, InstallContent wrote the .header, and the DLC stayed broken
++    // forever (IsInstalled only checks dir + .header). Fail loudly instead:
++    // no .header is written and the next launch retries the install.
++    X_STATUS read_status = in_file->ReadSync(
++        std::span<uint8_t>(buffer.get(), to_read), offset, &bytes_read);
++    if (read_status != X_STATUS_SUCCESS || bytes_read == 0) {
++      fclose(out_file);
++      in_file->Destroy();
++      return X_ERROR_ACCESS_DENIED;
++    }
++    if (fwrite(buffer.get(), 1, bytes_read, out_file) != bytes_read) {
++      fclose(out_file);
++      in_file->Destroy();
++      return X_ERROR_ACCESS_DENIED;
+     }
+-    fwrite(buffer.get(), 1, bytes_read, out_file);
+     offset += bytes_read;
+     remaining -= bytes_read;
+   }
