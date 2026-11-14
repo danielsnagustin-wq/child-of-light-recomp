@@ -241,17 +241,66 @@ void InstallDlcPackages(rex::Runtime* runtime) {
       // (never rename: the source may be a package the user dropped in).
       // The Java staging already names files by content ID, so this copy
       // only triggers for hand-dropped packages.
+      // Hunt 3, P2-1: the copy is atomic and verified. A launch killed
+      // mid-copy used to leave a partial <content_id> behind, and the old
+      // is_regular_file() check then kept it forever (every later launch
+      // failed the same install). Now: copy to <content_id>.tmp, check
+      // the size against the source, then rename. A staged file whose
+      // size differs from the source is re-copied the same way.
       const std::string content_id = ContentIdHex(*header);
       std::filesystem::path staged_path = package_path;
       if (package_path.filename().string() != content_id) {
         staged_path = package_path.parent_path() / content_id;
-        if (!std::filesystem::is_regular_file(staged_path)) {
+        std::error_code size_ec;
+        const auto source_size =
+            std::filesystem::file_size(package_path, size_ec);
+        if (size_ec) {
+          REXLOG_WARN("Could not stat DLC package {}: {}",
+                      package_path.string(), size_ec.message());
+          ++skipped_count;
+          continue;
+        }
+        std::error_code staged_size_ec;
+        const bool staged_ok =
+            std::filesystem::is_regular_file(staged_path, staged_size_ec) &&
+            !staged_size_ec &&
+            std::filesystem::file_size(staged_path, staged_size_ec) ==
+                source_size;
+        if (!staged_ok) {
+          const auto tmp_path =
+              package_path.parent_path() / (content_id + ".tmp");
           std::error_code copy_ec;
-          std::filesystem::copy_file(package_path, staged_path, copy_ec);
+          std::filesystem::copy_file(
+              package_path, tmp_path,
+              std::filesystem::copy_options::overwrite_existing, copy_ec);
           if (copy_ec) {
+            std::error_code remove_ec;
+            std::filesystem::remove(tmp_path, remove_ec);
             REXLOG_WARN("Could not stage DLC package {} as {}: {}",
                         package_path.string(), content_id,
                         copy_ec.message());
+            ++skipped_count;
+            continue;
+          }
+          std::error_code tmp_size_ec;
+          if (std::filesystem::file_size(tmp_path, tmp_size_ec) !=
+              source_size) {
+            std::error_code remove_ec;
+            std::filesystem::remove(tmp_path, remove_ec);
+            REXLOG_WARN(
+                "Staged DLC package {} has the wrong size after copy; will retry next launch",
+                content_id);
+            ++skipped_count;
+            continue;
+          }
+          std::error_code rename_ec;
+          std::filesystem::rename(tmp_path, staged_path, rename_ec);
+          if (rename_ec) {
+            std::error_code remove_ec;
+            std::filesystem::remove(tmp_path, remove_ec);
+            REXLOG_WARN("Could not stage DLC package {} as {}: {}",
+                        package_path.string(), content_id,
+                        rename_ec.message());
             ++skipped_count;
             continue;
           }
