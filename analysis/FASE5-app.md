@@ -283,7 +283,7 @@ arranca tras montar el STFS (parseo de cabecera + tabla de ficheros).
    (`private static native boolean setAssetFd(int, long, long)`).
 3. **STFS real del usuario (`private/ChildOfLight-XBLA`, solo cabecera
    0x400 B leída):** magia `LIVE`, `header_size` 44302, Title ID
-   `5841140D` (= `BuildConfig.TITLE_ID`), `volume_type` 0 (STFS),
+   `[redactado]` (= `BuildConfig.TITLE_ID`), `volume_type` 0 (STFS),
    `data_file_count` 0 (un solo fichero), flag `read_only_format = true`
    → `is_read_only()` del dispositivo será true. Tamaño 1.585.451.008 B
    (= el asset de FASE4). Esto valida `verifyUsable()` (magia + Title ID
