@@ -17,14 +17,43 @@
 # igual que si lo hubiera empaquetado Gradle. STORED es obligatorio: el
 # VFS abre el asset por fd (AssetManager.openFd / AAsset_openFileDescriptor),
 # y eso falla si la entrada va comprimida.
-set -eu
+#
+# LOS 7 DLC (M1, v1.4.2) van por el mismo camino: se inyectan despues como
+# assets/dlc/<content_id> (STORED, con verificacion de tamano+MD5 por
+# paquete) y DlcAssets los copia a <external>/data/dlc/ en cada arranque.
+# Los STFS de los DLC nunca entran en el repo: viven en private/dlc/.
+set -euo pipefail
 RECOMP=/home/hatch/workspace/col-recomp
 ANDROID_DIR=$RECOMP/tools/rexauto/android
 APK=$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk
 STFS=$RECOMP/private/ChildOfLight-XBLA
 KEYSTORE=$ANDROID_DIR/ci-release.jks
 FINAL=$RECOMP/private/ChildOfLight-recomp-v1.4.1-full.apk
+DLC_DIR=$RECOMP/private/dlc
+# Tabla DLC (M1, v1.4.2): nombre del archivo en private/dlc | content_id del
+# header STFS (offset 0x32C, 40 hex en mayusculas) | MD5 del fuente. Los
+# content_id se verificaron por parseo binario de los 7 (caza ronda 2 DLC,
+# P1-1); el sufijo del nombre del dump NO es el Content ID. La entrada en
+# la APK se llama assets/dlc/<content_id>.
+DLC_TABLE="
+Golem-775BBBBCEBBE90A5FE533A042A8BBE3CB0BBD2EB58|59AAD9B1F3DD5A03D8EB66466FA476847498EFF4|a21e628bd06eed90e2529bb1ad25e676
+Light-AADBD67854A470A8FB5A9E73225CAD290BB52C1058|83FEB636B64A47F8FEC9EA2A55E254DCE89D00C0|9ec94e6183ebcc683135a4a56c1cd952
+Dark-70D7B15761AFF21B4DEE7DE329ABE8ED4B0B05FC58|A199ACED8CEDB007C46061ABA294E05EA2E241EC|55493377f7dfa2413df13c2072f9cde7
+Stardust-6674A1F912536CAD7FB7F5DEAD5DB32FB09B146158|52BFDD521AA72DE41A97B13C656332E79C093DAB|bb2fbd72ab816b94b24537c27727bc1d
+Rough-AAE0CC0D4062788BD43880664F6BC1FB70B0008F58|0811DFC11EC23BE00C74477AC169DA4F77A207C8|ed00afdffad0e25db0c902edd7bbaf4e
+Tumbled-D38D4792DB8566BB709F0967FB464DECB463E7FA58|10E4CBDC2A9A2F3C60A44FEC0A856A423CC627E4|94383465dcace58af95039ff22b090c8
+Faceted-767965C3EBCCCFD10C839B63A74E2B90B196305058|8841A722359BB5191DF248F105C09A57CE9E2619|4ac8b8f015aa32e284e25f6965b9310f
+"
 cd $RECOMP
+# Pre-chequeos (hunt 2, P1-3/P2-4): fallar al inicio, no tras ~17 min de
+# Gradle (STFS) ni en el apksigner sign (keystore).
+test -f "$STFS" || { echo "[full] ERROR: STFS no encontrado: $STFS"; exit 1; }
+test -f "$KEYSTORE" || { echo "[full] ERROR: keystore no encontrado: $KEYSTORE"; exit 1; }
+# Pre-chequeo DLC (M1): los 7 paquetes deben existir antes del build.
+while IFS='|' read -r _dlc_file _dlc_cid _dlc_md5; do
+  [ -n "$_dlc_file" ] || continue
+  test -f "$DLC_DIR/$_dlc_file" || { echo "[full] ERROR: DLC no encontrado: $DLC_DIR/$_dlc_file"; exit 1; }
+done <<< "$DLC_TABLE"
 # Un build full anterior matado a mitad deja game.stfs en los intermediates
 # y el siguiente build intenta comprimirlo: limpiar antes (rutas ABSOLUTAS:
 # el trap de la primera version usaba rutas relativas y no borraba nada
@@ -36,6 +65,9 @@ rm -rf $ANDROID_DIR/app/build/intermediates/assets $ANDROID_DIR/app/build/interm
 rm -f "$APK" "${APK%.apk}-aligned.apk"
 cleanup() {
   rm -rf $ANDROID_DIR/app/build/intermediates/assets $ANDROID_DIR/app/build/intermediates/compressed_assets
+  # El tmpdir de apksigner (1,6 GB si se interrumpe el sign): si no se
+  # limpia aqui, nadie lo borra (hunt 2, P2-3).
+  rm -rf $RECOMP/private/tmp
   # Revertir el alias del keystore (ver el sed de abajo): el archivo en el
   # repo debe seguir diciendo rexauto; CI lo cambia con su propio sed.
   sed -i 's/keyAlias = "childoflight<3"/keyAlias = "rexauto"/' $ANDROID_DIR/app/build.gradle.kts
@@ -80,6 +112,80 @@ EOF
 N=$(unzip -l "$APK" | grep -c "assets/game.stfs") || true
 [ "$N" = "1" ] || { echo "[full] ERROR: $N entradas assets/game.stfs en la APK"; exit 1; }
 echo "[full] entrada game.stfs unica OK"
+# Verificar el STFS inyectado (hunt 2, P1-3): tamano + MD5 del stream
+# extraido contra el fuente. Sin esto, un STFS corrupto o truncado daria
+# una APK firmada "exitosa" que fallaria al montar en el telefono.
+SRC_SIZE=$(stat -c%s "$STFS")
+INJ_SIZE=$(unzip -l "$APK" | awk '/assets\/game\.stfs/ {print $1}')
+[ "$SRC_SIZE" = "$INJ_SIZE" ] || { echo "[full] ERROR: tamano del STFS inyectado ($INJ_SIZE) distinto del fuente ($SRC_SIZE)"; exit 1; }
+SRC_MD5=$(md5sum "$STFS" | cut -d' ' -f1)
+INJ_MD5=$(unzip -p "$APK" assets/game.stfs | md5sum | cut -d' ' -f1)
+[ "$SRC_MD5" = "$INJ_MD5" ] || { echo "[full] ERROR: MD5 del STFS inyectado distinto del fuente"; exit 1; }
+if [ "$INJ_MD5" != "ad88061a06fba28e3434945f37cb3d57" ]; then
+  echo "[full] AVISO: MD5 del STFS ($INJ_MD5) distinto del dump conocido ad88061a... (revisar que el fuente sea el dump bueno)"
+fi
+echo "[full] STFS inyectado verificado: $INJ_SIZE B, MD5 $INJ_MD5"
+# --- inyeccion de los 7 DLC como assets/dlc/<content_id> (STORED) ---
+# M1 (v1.4.2, caza ronda 2 DLC): los STFS de private/dlc/ van dentro de la
+# APK como assets; el launcher (DlcAssets, Java) los copia a
+# <external>/data/dlc/ y el instalador nativo (OnPostSetup) los instala.
+# La entrada se llama por el Content ID del header STFS, no por el sufijo
+# del dump (P1-1). STORED es obligatorio igual que game.stfs
+# (AssetManager.openFd lo exige). La tabla viaja por argv: el programa de
+# python viene por stdin (heredoc) y no puede leer la tabla de ahi.
+python3 - "$APK" "$DLC_DIR" "$DLC_TABLE" <<'EOF'
+import sys, zipfile
+apk, dlc_dir, table = sys.argv[1], sys.argv[2], sys.argv[3]
+with zipfile.ZipFile(apk, 'a', allowZip64=True) as z:
+    for line in table.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        filename, content_id, _md5 = line.split('|')
+        info = zipfile.ZipInfo('assets/dlc/' + content_id,
+                               date_time=(1980, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_STORED
+        info.external_attr = 0o644 << 16
+        with z.open(info, 'w', force_zip64=True) as dest:
+            with open(dlc_dir + '/' + filename, 'rb') as src:
+                while True:
+                    chunk = src.read(1 << 20)
+                    if not chunk:
+                        break
+                    dest.write(chunk)
+        print('[full] DLC inyectado como assets/dlc/' + content_id)
+EOF
+N_DLC=$(unzip -l "$APK" | grep -c "assets/dlc/") || true
+[ "$N_DLC" = "7" ] || { echo "[full] ERROR: $N_DLC entradas assets/dlc/ en la APK (esperadas 7)"; exit 1; }
+echo "[full] 7 entradas DLC OK"
+# Verificar cada DLC inyectado: tamano + MD5 del stream extraido contra
+# el fuente (mismo patron que game.stfs, hunt 2 P1-3).
+python3 - "$APK" "$DLC_DIR" "$DLC_TABLE" <<'EOF'
+import sys, zipfile, hashlib
+apk, dlc_dir, table = sys.argv[1], sys.argv[2], sys.argv[3]
+ok = True
+with zipfile.ZipFile(apk) as z:
+    for line in table.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        filename, content_id, expected_md5 = line.split('|')
+        entry = 'assets/dlc/' + content_id
+        try:
+            data = z.read(entry)
+        except KeyError:
+            print('[full] ERROR: falta la entrada ' + entry)
+            ok = False
+            continue
+        src = open(dlc_dir + '/' + filename, 'rb').read()
+        md5 = hashlib.md5(data).hexdigest()
+        if len(data) != len(src) or md5 != expected_md5 or md5 != hashlib.md5(src).hexdigest():
+            print('[full] ERROR: DLC ' + content_id + ' distinto del fuente')
+            ok = False
+        else:
+            print('[full] DLC verificado: ' + content_id + ' ' + str(len(data)) + ' B MD5 ' + md5)
+sys.exit(0 if ok else 1)
+EOF
 BT=$HOME/workspace/android-sdk/build-tools/34.0.0
 ALIGNED=${APK%.apk}-aligned.apk
 "$BT/zipalign" -f 4 "$APK" "$ALIGNED" && mv "$ALIGNED" "$APK"
@@ -96,6 +202,10 @@ export JAVA_HOME=$HOME/workspace/tools/jdk-17
 "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:rexauto \
   --key-pass pass:rexauto --ks-key-alias 'childoflight<3' \
   --v1-signing-enabled true --v2-signing-enabled true "$APK"
-"$BT/apksigner" verify --print-certs "$APK" | head -3
+# Con pipefail (arriba) el fallo de verify mata el script; la salida
+# completa queda en el log. Antes era `| head -3` sin pipefail: el exit
+# code era el de head (0) y un verify fallido se tragaba (hunt 2, P1-1).
+"$BT/apksigner" verify --print-certs "$APK" | tee "$RECOMP/private/verify-v141.txt"
 cp "$APK" "$FINAL"
+[ "$(stat -c%s "$APK")" = "$(stat -c%s "$FINAL")" ] || { echo "[full] ERROR: la copia final tiene tamano distinto"; exit 1; }
 echo "[full] APK final: $FINAL ($(stat -c%s "$FINAL") B, SHA $(sha256sum "$FINAL" | cut -d' ' -f1))"
