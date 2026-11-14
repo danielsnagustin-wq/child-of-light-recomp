@@ -1,0 +1,80 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+
+> Task :app:configureCMakeRelease[arm64-v8a]
+[CXX5304] Observed package id 'platforms;android-34-ext12' in inconsistent location '/home/hatch/workspace/android-sdk/platforms/android-34' (Expected '/home/hatch/workspace/android-sdk/platforms/android-34-ext12')
+[CXX5304] Observed package id 'platforms;android-34-ext12' in inconsistent location '/home/hatch/workspace/android-sdk/platforms/android-34' (Expected '/home/hatch/workspace/android-sdk/platforms/android-34-ext12')
+
+> Task :app:buildCMakeRelease[arm64-v8a]
+> Task :app:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :app:mergeReleaseNativeLibs UP-TO-DATE
+> Task :app:stripReleaseDebugSymbols UP-TO-DATE
+> Task :app:extractReleaseNativeSymbolTables UP-TO-DATE
+> Task :app:mergeReleaseNativeDebugMetadata UP-TO-DATE
+> Task :app:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :app:generateReleaseBuildConfig
+> Task :app:javaPreCompileRelease UP-TO-DATE
+> Task :app:checkReleaseAarMetadata UP-TO-DATE
+> Task :app:generateReleaseResValues UP-TO-DATE
+> Task :app:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :app:generateReleaseResources UP-TO-DATE
+> Task :app:mergeReleaseResources UP-TO-DATE
+> Task :app:packageReleaseResources UP-TO-DATE
+> Task :app:parseReleaseLocalResources UP-TO-DATE
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease UP-TO-DATE
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :app:processReleaseResources
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:dexBuilderRelease
+> Task :app:desugarReleaseFileDependencies UP-TO-DATE
+> Task :app:mergeReleaseStartupProfile UP-TO-DATE
+> Task :app:mergeExtDexRelease UP-TO-DATE
+> Task :app:mergeDexRelease
+> Task :app:mergeReleaseArtProfile UP-TO-DATE
+> Task :app:mergeReleaseGlobalSynthetics UP-TO-DATE
+> Task :app:compileReleaseArtProfile
+> Task :app:mergeReleaseShaders UP-TO-DATE
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets FROM-CACHE
+> Task :app:extractReleaseVersionControlInfo UP-TO-DATE
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:mergeReleaseJavaResource UP-TO-DATE
+> Task :app:optimizeReleaseResources
+> Task :app:collectReleaseDependencies UP-TO-DATE
+> Task :app:sdkReleaseDependencyData UP-TO-DATE
+> Task :app:validateSigningRelease UP-TO-DATE
+> Task :app:writeReleaseAppMetadata UP-TO-DATE
+> Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+
+[Incubating] Problems report is available at: file:///home/hatch/workspace/col-recomp/tools/rexauto/android/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 1m 50s
+45 actionable tasks: 16 executed, 1 from cache, 28 up-to-date
+[full] APK base construida: 24568091 B
+[full] game.stfs inyectado como assets/game.stfs (STORED)
+[full] entrada game.stfs unica OK
+zip W 11-13 17:50:13 14776 14776] WARNING: header mismatch
+
+[full] zipalign OK
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/hatch/workspace/col-recomp/private/tmp
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/home/hatch/workspace/col-recomp/private/tmp
+Signer #1 certificate DN: CN="el título <3", OU=Aurora, O=el port
+Signer #1 certificate SHA-256 digest: 3768a83d38837f424138c1570f77e111bd1777ff6df049d476e562a46bb189ab
+Signer #1 certificate SHA-1 digest: 51cf982521a38d105039da30511cfd77e429d5c7
+[full] APK final: /home/hatch/workspace/col-recomp/private/ChildOfLight-recomp-v1.4.1-full.apk (1610028992 B, SHA 30d0e90216b6b78880cdfc0bc48d3dee59b2358427c69d1e432afa4985a2f222)
