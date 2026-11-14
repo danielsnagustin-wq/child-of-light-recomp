@@ -27,9 +27,25 @@
 #      hace rm -rf y reconstruye solo desde parches, y los archivos SDK
 #      trackeados (STFS de Fase 5 + ediciones a mano) no los produce ningun
 #      parche -- sin el, un build con cache-miss perderia el soporte STFS
-#      (prueba de assemble-android-tree.sh, 2026-11-13). El codegen (job recompile) sigue usando el
-#      XenonRecomp STOCK de rexauto (sin nuestros parches 0015-0022 ni
-#      register-as-local ni db16cyc->yield): TODO, ver abajo.
+#      (prueba de assemble-android-tree.sh, 2026-11-13). Codegen (job recompile):
+#      rexauto NO usa XenonRecomp: el codegen lo hace el binario del SDK
+#      (rexglue.exe, v0.10.0-rexauto.2). Los parches 0015-0022 de
+#      patches/XenonRecomp/ son contra hedge-dev/XenonRecomp y NO aplican al
+#      arbol del SDK (no existen XenonRecomp/ ni XenonUtils/ ahi; verificado
+#      2026-11-13). Tampoco se lee recomp/col.toml en CI: es un manifest de
+#      XenonRecomp standalone; rexauto autora su propio <name>_manifest.toml
+#      (stage init) y el SDK lee las opciones *_as_local como claves TOP-LEVEL
+#      de ese manifest (config.cpp ApplyToml). El SDK YA soporta as_local
+#      nativamente y NO emite un ppc_context.h podado (el contexto es el del
+#      runtime, completo); db16cyc ya es no-op en el SDK (build_db16cyc).
+#      Lo que SI falta para que as_local sea CORRECTO es el pase
+#      tools/localize_fix_col.py sobre el arbol generado (flush/copy-back
+#      entre llamadas; sin el, el callee lee registros stale) -- y el script
+#      hoy solo entiende sintaxis XenonRecomp (PPC_FUNC_IMPL /
+#      PPC_CALL_INDIRECT_FUNC), no la del SDK (DEFINE_REX_FUNC /
+#      REX_CALL_INDIRECT_FUNC). El cableado (inyeccion en el manifest +
+#      paso localize + verificacion con tripwire) esta en el job recompile;
+#      la adaptacion del script al SDK es el TODO pendiente, ver abajo.
 #   3. `runheal` por defecto `true` (en rexauto Android es `false`): sin gabarito
 #      previo de CoL, el heal en Windows es la única fuente de curas.
 #      `heal_iters` por defecto `"6"` (en rexauto Android es `"4"`).
@@ -53,12 +69,17 @@
 #     de producción.
 #   - Title ID a confirmar con el dump (citado 5841140D, no verificado).
 #   - Jump tables: el CI salta jumptables siempre (--no-jumptables, no hay IDA).
-#   - Codegen con XenonRecomp parcheado (parches 0015-0022 + localize_fix_col.py
-#     + db16cyc->yield): hoy el job recompile usa el stock, asi que el C++
-#     de CI no es el mismo que el local. El paso "Guard: patched codegen
-#     required" falla el job si col.toml trae *_as_local = true, para no
-#     generar codigo roto en silencio. El APK de CI (job apk) SI lleva
-#     nuestros archivos de app y parches SDK gracias al overlay.
+#   - Adaptar tools/localize_fix_col.py a la sintaxis del SDK (DEFINE_REX_FUNC /
+#     REX_CALL_INDIRECT_FUNC / REX_FUNC_PROLOGUE) y verificarlo sobre codigo
+#     generado REAL del SDK: hoy el script solo entiende la sintaxis
+#     XenonRecomp y encontraria 0 funciones. El paso "Verify register-as-local
+#     codegen + localize" FALLA el job si hay 0 marcadores LOCALIZE_FIX en el
+#     arbol generado (tripwire): no se envia codigo as_local=true sin el pase
+#     localize, porque el callee leeria registros stale. NO borrar el tripwire
+#     hasta que la adaptacion exista y este verificada. Informe:
+#     ~/workspace/research/ci-codegen-2026-11-13.md (en el workspace, no en el repo).
+#     El APK de CI (job apk) SI lleva nuestros archivos de app y parches SDK
+#     gracias al overlay.
 
 name: Recompile Child of Light for Android (rexauto)
 
@@ -196,32 +217,138 @@ jobs:
           Write-Host "actual:   $actual"
           if ($actual -ne $expected) { Write-Host "::error::SHA-256 mismatch: the downloaded ISO is not the expected one"; exit 1 }
 
-      - name: "Guard: patched codegen required for register-as-local"
+      - name: Recompile (extract + init)
+        shell: pwsh
+        working-directory: rexauto
+        run: |
+          # Phase 1 of the two-phase recompile: run rexauto only up to the
+          # init stage, so the next step can inject the register-as-local
+          # keys into the manifest rexauto authors. State is saved in
+          # $REXAUTO_WORK\.rexauto_state, so completed stages are skipped
+          # on the next invocation (rexauto.py --from/--until).
+          # NOTE: --until init here must be the ONLY --until flag: argparse
+          # keeps the last one, and the runheal-based "--until build" of
+          # phase 2 would silently extend this phase past init.
+          $args = @("${{ steps.fetch.outputs.container }}", "--name", "${{ env.REX_PROJECT }}",
+                    "--no-jumptables", "--heal-iters", "${{ inputs.heal_iters }}", "--publish-gabarito",
+                    "--until", "init")
+          New-Item -ItemType Directory -Force "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}" | Out-Null
+          python rexauto.py @args 2>&1 | Tee-Object -FilePath "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\_pipeline-init.log"
+          exit $LASTEXITCODE
+
+      - name: Inject register-as-local into the manifest
         shell: pwsh
         run: |
-          # recomp/col.toml flips the 6 *_as_local options (v1.4.2). Stock
-          # XenonRecomp would then generate a PRUNED PPCContext (fields
-          # missing) and code that reads ctx.<reg> for fields that do not
-          # exist. The codegen must use our patched XenonRecomp (patches
-          # 0015-0022, incl. 0021 unconditional struct fields) + run
-          # tools/localize_fix_col.py on the generated tree. Until that
-          # wiring lands, fail fast instead of shipping broken codegen.
-          $toml = Get-Content -Raw "recomp/col.toml"
-          if ($toml -match '(?m)^\s*\w+_as_local\s*=\s*true') {
-            Write-Host "::error::recomp/col.toml enables *_as_local but the recompile job still uses STOCK XenonRecomp: wire the patched codegen (patches/XenonRecomp/0015-0022 + tools/localize_fix_col.py) before running this job. See docs/REXAUTo.md."
-            exit 1
+          # The SDK reads the *_as_local / skip_* options as TOP-LEVEL keys
+          # of the project manifest (rexglue-sdk/src/codegen/config.cpp,
+          # ApplyToml: toml["ctr_as_local"] etc.). The manifest rexauto
+          # authors (stage init) has no [codegen] section: keys appended at
+          # the end would land under [entrypoint] and be silently ignored.
+          # So insert them BEFORE the first [section] header. Idempotent:
+          # any previous copy of these keys is dropped first (re-runs).
+          # skip_lr / skip_msr stay false (phase 2, separate decision).
+          $port = "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\port"
+          $manifest = Join-Path $port "${{ env.REX_PROJECT }}_manifest.toml"
+          if (-not (Test-Path $manifest)) { Write-Host "::error::manifest not found at $manifest -- the init stage did not produce it"; exit 1 }
+          $keys = @(
+            "ctr_as_local = true",
+            "xer_as_local = true",
+            "reserved_as_local = true",
+            "cr_as_local = true",
+            "non_argument_as_local = true",
+            "non_volatile_as_local = true",
+            "skip_lr = false",
+            "skip_msr = false"
+          )
+          $names = @("ctr_as_local","xer_as_local","reserved_as_local","cr_as_local","non_argument_as_local","non_volatile_as_local","skip_lr","skip_msr")
+          $lines = [System.IO.File]::ReadAllLines($manifest)
+          $kept = @()
+          foreach ($l in $lines) {
+            $m = [regex]::Match($l, '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=')
+            if ($m.Success -and ($names -contains $m.Groups[1].Value)) { continue }
+            $kept += $l
           }
+          $idx = -1
+          for ($i = 0; $i -lt $kept.Count; $i++) { if ($kept[$i] -match '^\s*\[') { $idx = $i; break } }
+          if ($idx -lt 0) { $idx = $kept.Count }
+          $block = @("# register-as-local (injected by the workflow, CI codegen wiring 2026-11-13):") + $keys
+          $new = @()
+          if ($idx -gt 0) { $new += $kept[0..($idx-1)] }
+          $new += $block
+          if ($idx -lt $kept.Count) { $new += $kept[$idx..($kept.Count-1)] }
+          [System.IO.File]::WriteAllLines($manifest, $new)
+          foreach ($k in $keys) {
+            $name = ($k -split '\s*=\s*', 2)[0]
+            $value = ($k -split '\s*=\s*', 2)[1]
+            $hits = @(Select-String -Path $manifest -Pattern ("^\s*" + [regex]::Escape($name) + "\s*=\s*" + [regex]::Escape($value) + "\s*$"))
+            if ($hits.Count -ne 1) { Write-Host "::error::manifest key '$k' found $($hits.Count) times (want exactly 1)"; exit 1 }
+          }
+          Write-Host "manifest updated: $($keys.Count) codegen keys injected into $manifest"
 
       - name: Recompile (codegen + static heal + build check)
         shell: pwsh
         working-directory: rexauto
         run: |
+          # Phase 2: resume from setjmp with the injected manifest.
+          # The init stage is skipped (state file), so the manifest is NOT
+          # re-authored and the injected keys survive. runheal=false (the
+          # default) still caps the run at build, as before.
           $args = @("${{ steps.fetch.outputs.container }}", "--name", "${{ env.REX_PROJECT }}",
-                    "--no-jumptables", "--heal-iters", "${{ inputs.heal_iters }}", "--publish-gabarito")
+                    "--no-jumptables", "--heal-iters", "${{ inputs.heal_iters }}", "--publish-gabarito",
+                    "--from", "setjmp")
           if ("${{ inputs.runheal }}" -ne "true") { $args += @("--until", "build") }
-          New-Item -ItemType Directory -Force "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}" | Out-Null
           python rexauto.py @args 2>&1 | Tee-Object -FilePath "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\_pipeline.log"
           exit $LASTEXITCODE
+
+      - name: Localize generated code (register-as-local flush)
+        shell: pwsh
+        run: |
+          # tools/localize_fix_col.py runs on the GENERATED tree (after
+          # codegen converged, before the pack step). It adds the cross-call
+          # flush/copy-back that register-as-local needs: without it a
+          # callee reads stale ctx.<reg> where its caller set a local.
+          # TODO(SDK-adapt): the script as written keys on XenonRecomp
+          # syntax (PPC_FUNC_IMPL / PPC_CALL_INDIRECT_FUNC /
+          # PPC_FUNC_PROLOGUE) while the SDK codegen emits DEFINE_REX_FUNC /
+          # REX_CALL_INDIRECT_FUNC / REX_FUNC_PROLOGUE -- so today it finds
+          # 0 functions and exits 0. The next step ("Verify register-as-local
+          # codegen + localize") FAILS the job when 0 LOCALIZE_FIX markers
+          # are found, instead of shipping un-localized code silently. Do NOT
+          # delete that tripwire until the script is adapted to the SDK
+          # syntax and verified on real SDK-generated output.
+          $gen = "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\port\generated\default"
+          python "$env:GITHUB_WORKSPACE\tools\localize_fix_col.py" "$gen\ppc_recomp.*.cpp"
+          exit $LASTEXITCODE
+
+      - name: Verify register-as-local codegen + localize
+        shell: pwsh
+        run: |
+          # Replaces the old "Guard: patched codegen required" step. That
+          # guard checked recomp/col.toml, a file CI never consumes; this
+          # one checks the three things that prove the wiring ran:
+          #  (1) the manifest still carries the 6 injected keys = true;
+          #  (2) the SDK codegen honored them (the generated *_init.cpp
+          #      carries the flags as struct fields, init_cpp.inja);
+          #  (3) the localize pass actually transformed the generated code
+          #      (LOCALIZE_FIX markers) -- the tripwire for the TODO above.
+          $port = "$env:REXAUTO_WORK\${{ env.REX_PROJECT }}\port"
+          $manifest = Join-Path $port "${{ env.REX_PROJECT }}_manifest.toml"
+          $gen = Join-Path $port "generated\default"
+          $flagNames = @("ctr_as_local","xer_as_local","reserved_as_local","cr_as_local","non_argument_as_local","non_volatile_as_local")
+          foreach ($k in $flagNames) {
+            if ((Select-String -Path $manifest -Pattern "^\s*$k\s*=\s*true\s*$").Count -ne 1) { Write-Host "::error::manifest lost $k = true -- the injection did not survive"; exit 1 }
+          }
+          $initCpp = Join-Path $gen "${{ env.REX_PROJECT }}_init.cpp"
+          if (-not (Test-Path $initCpp)) { Write-Host "::error::generated init file missing: $initCpp (expected <project>_init.cpp in generated/default)"; exit 1 }
+          foreach ($k in $flagNames) {
+            if ((Select-String -Path $initCpp -Pattern "\.$k\s*=\s*true").Count -lt 1) { Write-Host "::error::generated init file does not show .$k = true -- the SDK codegen ignored the manifest"; exit 1 }
+          }
+          $marks = (Get-ChildItem $gen -Filter "ppc_recomp.*.cpp" | Select-String -Pattern "LOCALIZE_FIX").Count
+          if (-not $marks) {
+            Write-Host "::error::0 LOCALIZE_FIX markers in the generated tree: tools/localize_fix_col.py did not transform the SDK-generated code (it keys on XenonRecomp syntax: PPC_FUNC_IMPL / PPC_CALL_INDIRECT_FUNC; the SDK emits DEFINE_REX_FUNC / REX_CALL_INDIRECT_FUNC). Adapt the script to the SDK syntax and re-run; do not ship as_local=true code without the localize pass (callees would read stale registers)."
+            exit 1
+          }
+          Write-Host "register-as-local verified: manifest keys + generated init flags + $marks LOCALIZE_FIX markers"
 
       - name: Title metadata (name, Title ID, cover)
         id: meta
