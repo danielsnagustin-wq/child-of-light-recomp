@@ -49,10 +49,16 @@ cd $RECOMP
 # Gradle (STFS) ni en el apksigner sign (keystore).
 test -f "$STFS" || { echo "[full] ERROR: STFS no encontrado: $STFS"; exit 1; }
 test -f "$KEYSTORE" || { echo "[full] ERROR: keystore no encontrado: $KEYSTORE"; exit 1; }
-# Pre-chequeo DLC (M1): los 7 paquetes deben existir antes del build.
+# Pre-chequeo DLC (M1): los 7 paquetes deben existir antes del build, con
+# el MD5 de DLC_TABLE (hunt 3, P2-5). Antes solo se comprobaba que el
+# archivo existiera y un paquete equivocado (mismo nombre, contenido
+# distinto) solo se detectaba tras ~17 min de Gradle, en la verificacion
+# post-inyeccion. md5sum de 14,5 MB son segundos.
 while IFS='|' read -r _dlc_file _dlc_cid _dlc_md5; do
   [ -n "$_dlc_file" ] || continue
   test -f "$DLC_DIR/$_dlc_file" || { echo "[full] ERROR: DLC no encontrado: $DLC_DIR/$_dlc_file"; exit 1; }
+  _dlc_actual=$(md5sum "$DLC_DIR/$_dlc_file" | cut -d' ' -f1)
+  [ "$_dlc_actual" = "$_dlc_md5" ] || { echo "[full] ERROR: MD5 del DLC $_dlc_file distinto del esperado ($_dlc_actual != $_dlc_md5)"; exit 1; }
 done <<< "$DLC_TABLE"
 # Un build full anterior matado a mitad deja game.stfs en los intermediates
 # y el siguiente build intenta comprimirlo: limpiar antes (rutas ABSOLUTAS:
