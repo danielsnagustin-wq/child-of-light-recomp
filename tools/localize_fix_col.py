@@ -28,7 +28,7 @@
 #   (c) save_helpers() reads ppc_func_mapping.cpp, not gow2_init.cpp (no
 #       *_init.cpp exists here; the table lives at ppc_func_mapping.cpp:66322
 #       and its format already matches SAVE_HELPER).
-#   (d) indirect calls are PPC_CALL_INDIRECT_FUNC(, not REX_CALL_INDIRECT_FUNC(.
+#   (d) indirect calls are PPC_CALL_INDIRECT_FUNC, not REX_CALL_INDIRECT_FUNC.
 #   (e) split_prologue() looks for PPC_FUNC_PROLOGUE();, not REX_FUNC_PROLOGUE();.
 #   (f) STORE regex also matches our PPC_STORE_U8/16/32/64 macros (Gears used
 #       REX_STORE_U*); simde stores kept for safety.
@@ -42,6 +42,16 @@
 #   (h) the generated PPCContext keeps every field unconditionally (XenonRecomp
 #       patch 0021): demotions to ctx.<reg> compile, and the layout stays
 #       byte-identical to the SDK runtime struct.
+#       Hunt 3, P2-6: the two definitions (runtime rex/ppc/context.h:223 and
+#       generated ppc_context.h:335) are both global struct PPCContext and
+#       CANNOT be checked against each other in one TU -- including both
+#       headers fails to compile (redefinition of PPCFuncMapping,
+#       PPCRegister, PPCXERRegister, PPCCRRegister, PPCContext; verified
+#       with g++ -std=c++23 -fsyntax-only). Sync is enforced by patch 0021
+#       (all fields unconditional) plus the field-list comparison done by
+#       hand in the hunt (208/208 identical in order). A build-time check
+#       would have to diff the field lists (e.g. in CI), not static_assert
+#       in one TU -- not implemented here (build-system change).
 # usage: localize_fix_col.py "<generated/default>/*.cpp" [--dry-run] [--verbose] [--list=N] [--why=FUNC]
 import collections
 import glob
@@ -78,8 +88,8 @@ class Func:
 
 
 # Registers some codegen *_as_local option can make a local. A function that still reads one of
-# them from ctx (an SEH funclet keeps the parent's non-volatiles there, a function this pass
-# already demoted) needs it from its caller like any live-in local.
+# them from ctx (an SEH funclet keeps the non-volatiles of the parent frame there). A function this pass
+# already demoted needs it from its caller like any live-in local.
 LOCALIZABLE = r"(?:r(?:0|2|11|12|1[4-9]|2\d|3[01])|f(?:0|1[4-9]|2\d|3[01])|v(?:1[4-9]|[2-9]\d|1[01]\d|12[0-7])|cr[0-7]|ctr|xer|reserved)"
 CTX_REF = re.compile(r"\bctx\.(" + LOCALIZABLE + r")\b")
 
@@ -401,15 +411,29 @@ def demote_line(line, regs):
                   r"ctx.\1", line)
 
 
-# The CRT reaches funclets through a pointer with the frame in r12 (sub_82A93144: mtctr r4;
-# mr r12,r5; bctr), so an indirect call must see the caller's r12.
-INDIRECT_REGS = ("r12",)
+# Hunt 3, P1-1: an indirect call's callee is unknown at analysis time
+# (dispatch on ctr in runtime), so it may read ANY kept localizable
+# register as a live-in -- observed live-ins include r27 (4,136 functions)
+# and volatile vectors (v57 in 790, v55 in 697, v127 in 573). Flushing
+# only r12 left every other live-in stale in ctx. Every indirect call
+# therefore flushes ALL kept locals and copies them back afterwards,
+# exactly like a direct call. That also covers the switch-trap default:
+# case (the trap target goes on with every register of this function).
+# One leftover: a wrapper from the old r12-only pass flushed r12 with
+# copy_back=False, and line() only wraps the delta (kept - flushed_above),
+# so r12 kept no copy-back after indirect calls (27,713 of 28,179 sites).
+# complete_indirect_copybacks() adds the missing copy-back lines at the end
+# of body(), so indirects sync back exactly like directs. A dataflow check
+# proved the gap benign in this tree (0 stale r12 reads: r12 is always
+# redefined before any use after a call), but the invariant now holds by
+# construction instead of by luck.
 INDIRECT = "PPC_CALL_INDIRECT_FUNC("
 NON_VOLATILE_CR = re.compile(r"^cr[234]$")
 SAVE_HELPER = re.compile(r"\{ 0x([0-9A-F]{8}), __save(gprlr|fpr|vmx)_(\d+) \}")
 BL_COMMENT = re.compile(r"^\s*// bl 0x([0-9a-f]{8})\s*$")
 HELPER_CALL = re.compile(r"\b__(?:save|rest)(?:gprlr|fpr|vmx)_\d+\(ctx, base\);")
 FLUSH = re.compile(r"^\s*ctx\.(\w+) = \1;  " + re.escape(MARK) + "$")
+COPYBACK = re.compile(r"^\s*(\w+) = ctx\.\1;  " + re.escape(MARK) + "$")
 SELF_COPY = re.compile(r"^\s*ctx\.(\w+) = ctx\.\1;  " + re.escape(MARK) + "$")
 RESTORE_IN = re.compile(r"ctx\.(\w+) = lf_in_\1;")
 CALL_SLOT = re.compile(r"\blf_call_(\w+)\b(?!\))")
@@ -447,10 +471,6 @@ def helper_saved(func, helpers):
     return regs
 
 
-def defined_regs(func, regs):
-    return {r for r in regs if any(re.match(rf"^\s*{r}\.(?:u64|s64|u32|s32)\s*=", l) for l in func.lines)}
-
-
 def flushed_above(out):
     names = set()
     for line in reversed(out):
@@ -464,14 +484,6 @@ def flushed_above(out):
 
 def last_code(out):
     return next((l.strip() for l in reversed(out) if MARK not in l), "")
-
-
-def indirect_regs(out, kept, indirect_flush):
-    # patch_switch_traps sends an out-of-range switch index to the case address in ctr, which
-    # harvest registered as a function of its own: it goes on with every register of this one.
-    if last_code(out) == "default:":
-        return kept
-    return indirect_flush
 
 
 def mark(indent, stmt):
@@ -530,7 +542,6 @@ class FuncRewrite:
         self.demoted = demoted
         self.livein_of = livein_of
         self.kept = set(func.locals) - demoted
-        self.indirect_flush = defined_regs(func, set(INDIRECT_REGS) & self.kept)
         # The codegen drops __save*/__rest* calls even where registers stay in ctx (funclets).
         saved = {r for r in (demoted | func.ctx_regs) & helper_saved(func, helpers) if non_volatile(r)}
         # Its own copies into ctx before a funclet call overwrite the caller's value for good.
@@ -538,6 +549,45 @@ class FuncRewrite:
         self.new_entry = saved | flushed
         self.slots = set()
         self.flushes = 0
+
+    def complete_indirect_copybacks(self, out):
+        # A wrapper written by the old r12-only pass flushed r12 before the
+        # call but copied nothing back (copy_back=False); line() above only
+        # wraps the delta (kept - flushed_above), so r12 still has no
+        # copy-back. Add the missing copy-back lines so an indirect call
+        # syncs its locals back exactly like a direct call. The dataflow
+        # check (0 stale r12 reads in the tree) shows the gap is benign in
+        # practice -- r12 is always redefined before any use after a call --
+        # but the invariant should hold by construction, not by luck.
+        added = 0
+        i = 0
+        while i < len(out):
+            line = out[i]
+            if INDIRECT in line and not line.strip().startswith("//"):
+                indent = re.match(r"\s*", line).group(0)
+                flushed = set()
+                j = i - 1
+                while j >= 0 and MARK in out[j]:
+                    m = FLUSH.match(out[j])
+                    if m:
+                        flushed.add(m.group(1))
+                    j -= 1
+                copied = set()
+                k = i + 1
+                last_copyback = i
+                while k < len(out) and MARK in out[k]:
+                    m = COPYBACK.match(out[k])
+                    if m:
+                        copied.add(m.group(1))
+                        last_copyback = k
+                    k += 1
+                missing = sorted(flushed - copied)
+                if missing:
+                    ins = [mark(indent, f"{r} = ctx.{r};") for r in missing]
+                    out[last_copyback + 1:last_copyback + 1] = ins
+                    added += len(ins)
+            i += 1
+        return added
 
     def body(self, lines):
         existing = {m.group(1) for m in map(SLOT_DECL.match, lines) if m}
@@ -551,6 +601,7 @@ class FuncRewrite:
             out.extend(self.line(line, out, entry))
         if entry and last_code(out) not in ("return;",) and not last_code(out).startswith("goto "):
             out.extend(mark("\t", f"ctx.{r} = lf_in_{r};") for r in sorted(entry - restored_above(out)))
+        self.flushes += self.complete_indirect_copybacks(out)
         return self.prologue(lines, existing) + out
 
     def prologue(self, lines, existing):
@@ -580,9 +631,9 @@ class FuncRewrite:
             self.flushes += 1
             return around_call(indent, line, regs, True, self.slots)
         if code.strip().startswith(INDIRECT):
-            regs = indirect_regs(out, self.kept, self.indirect_flush) - flushed_above(out)
+            regs = self.kept - flushed_above(out)
             self.flushes += bool(regs)
-            return around_call(indent, line, regs, False, self.slots) if regs else [line]
+            return around_call(indent, line, regs, True, self.slots) if regs else [line]
         return with_restores(line, out, entry)
 
 
