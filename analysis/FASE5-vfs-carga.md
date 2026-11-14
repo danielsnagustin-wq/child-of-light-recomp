@@ -1,4 +1,4 @@
-# FASE 5 — VFS / FLUJO / CARGA (v1.4) — Child of Light, port nativo Xbox 360 → Android
+# FASE 5 — VFS / FLUJO / CARGA (v1.4) — el título, port nativo Xbox 360 → Android
 
 Autor: worker VFS/FLUJO/CARGA · Fecha: 2026-11-13 · Base: v1.3, HEAD `205b41c`
 Alcance: bugs 3+7 (intro que se salta, `.srt` no resuelto), bug 2 (carga de varios minutos),
@@ -39,7 +39,7 @@ que ya existía por diseño sobreviva entre arranques.
   `<game_data_root>/world/common/movie/plan_logo.es.srt` en el sistema de ficheros del host.
   **No puede ver dentro de los `.ipk`.** Los `.ipk` no se montan como directorios virtuales para
   `NtCreateFile`; el juego los abre como ficheros y los lee por dentro con su propio lector
-  (sistema de ficheros en capas de UbiArt: sueltas primero, luego archivos IPK — ver §2.2).
+  (sistema de ficheros en capas del motor: sueltas primero, luego archivos IPK — ver §2.2).
 - El `StfsContainerDevice` ya estaba compilado en el SDK (`src/filesystem/CMakeLists.txt`,
   lib OBJECT `rexfilesystem`; `src/kernel/CMakeLists.txt:69` la enlaza en `rex::runtime`;
   `CMakeLists.txt:275` del SDK tiene `add_subdirectory(src/filesystem)`). Su único usuario en
@@ -74,7 +74,7 @@ que ya existía por diseño sobreviva entre arranques.
   **Montar el STFS no "cura" `plan_logo.es.srt`.** El bug 7, tal como estaba formulado
   (".srt no encontrado"), es una pista falsa para el logo.
 - Los subtítulos de las cinemáticas (que SÍ existen dentro de `child_of_light_x360.ipk`) los lee
-  el propio motor UbiArt del juego con su sistema de ficheros en capas (sueltas primero, luego
+  el propio motor el motor del juego con su sistema de ficheros en capas (sueltas primero, luego
   IPK); el VFS solo tiene que servir los bytes del `.ipk` correctamente, cosa que el
   `HostPathFile` de v1.3 ya hace. No hay literales `movie`/`wmv`/`plan_logo`/`.srt`/`ipk` en el
   código recompilado del juego (`autoports/childoflight/port/generated/`): las rutas se
@@ -99,7 +99,7 @@ que ya existía por diseño sobreviva entre arranques.
   `autoports/` ni en `analysis/col-imports.txt`, que solo lista direcciones IAT).
   **Comprobación para el parent/usuario: buscar `XamLoadExtraAVCodecs2 STUB` en el log de v1.3.**
 - Precedente Xenia (búsqueda web): los vídeos en Xenia a menudo se reproducen (decodificación
-  software Bink a texturas) o se saltan/quedan en negro; los vídeos del logo de Ubisoft aparecen
+  software Bink a texturas) o se saltan/quedan en negro; los vídeos del logo de la editora aparecen
   específicamente en problemas de compatibilidad. No se encontró soporte de decodificador WMV
   en Xenia.
 - **El salto del menú NO lo explica el VFS**: el título se renderiza y el juego llega al
