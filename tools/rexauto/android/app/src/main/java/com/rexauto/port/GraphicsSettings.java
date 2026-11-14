@@ -135,6 +135,15 @@ public final class GraphicsSettings {
         m.put("video_mode_height", Integer.toString(videoHeight()));
         m.put("present_letterbox", Boolean.toString(letterbox()));
 
+        // DLC license (hunt 2 DLC, P0-1): the game checks bit 0 of the
+        // GLOBAL license mask (XamContentGetLicenseMask returns only this
+        // cvar, default 0) before enabling any DLC. The per-package mask
+        // (0x1, written into the .header by InstallContent) does NOT feed
+        // that check, so without this line the game enumerates the DLCs
+        // but never enables them. 0xFFFFFFFF covers bit 0 with margin.
+        // Always on (all presets): licensing has nothing to do with graphics.
+        m.put("license_mask", "4294967295");
+
         // --- preset bundle -------------------------------------------------
         String p = preset();
         if (!p.equals("accuracy")) {
@@ -143,21 +152,32 @@ public final class GraphicsSettings {
             m.put("readback_memexport", "false");
             m.put("vulkan_readback_memexport", "false");
             m.put("vulkan_readback_resolve", "false");
-            // texture cache: keep well under what a 4-6 GB phone can give us
-            m.put("texture_cache_memory_limit_soft", "192");
-            m.put("texture_cache_memory_limit_hard", "384");
-            m.put("texture_cache_memory_limit_render_to_texture", "16");
-            // shader compile off the render thread; skip presenting frames the
-            // GPU could not finish in time instead of queueing them up
+            // texture cache: SDK defaults (384/768/24). v1.4.1 used half
+            // (192/384/16) and with the DXT->uncompressed 4x fallback the
+            // cache held ~48 MB DXT-equivalent before evicting: constant
+            // evict + re-decode, the texture errors on the phone (hunt
+            // app-java P0-2 + nativo-sdk P0-2, both verified in code).
+            m.put("texture_cache_memory_limit_soft", "384");
+            m.put("texture_cache_memory_limit_hard", "768");
+            m.put("texture_cache_memory_limit_render_to_texture", "24");
+            // shader compile off the render thread; present frames that used a
+            // placeholder pipeline instead of dropping them (the skip drops
+            // whole frames during shader warm-up, which reads as stutter;
+            // v1.4.1 proved the engine default alone does not hold because
+            // this settings value overrode it)
             m.put("async_shader_compilation", "true");
-            m.put("vulkan_async_skip_incomplete_frames", "true");
+            m.put("vulkan_async_skip_incomplete_frames", "false");
             // present: FIFO only (mailbox/immediate keep the GPU busy rendering
             // frames the panel never shows -- pure heat on a phone)
             m.put("vulkan_allow_present_mode_immediate", "false");
             m.put("vulkan_allow_present_mode_mailbox", "false");
             m.put("vulkan_allow_present_mode_fifo_relaxed", "true");
             // log I/O on the render/guest threads is not free
-            m.put("log_level", "warning");
+            // log_level=info while diagnosing (hunt P1-2): warning hid the
+            // info lines the FASE5 checklist needs (presenter geometry,
+            // STFS fd, affinity pin, pipelines created) -- that is why the
+            // v1.4.1 log the user sent was warnings-only.
+            m.put("log_level", "info");
             m.put("log_high_frequency_kernel_calls", "false");
             m.put("vulkan_log_debug_messages", "false");
             m.put("gpu_debug_markers", "false");
