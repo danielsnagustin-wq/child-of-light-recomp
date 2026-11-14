@@ -11,7 +11,7 @@
 //    The content ID is derived from the header already read for validation.
 //  - P0-1b: license_mask is forced to 0xFFFFFFFF before scanning. The game
 //    checks bit 0 of the GLOBAL mask before enumerating marketplace content
-//    (sub_82A4DD10, recomp/ppc/ppc_recomp.262.cpp:14575); settings.txt
+//    (sub_82A4DD10, recomp/ppc/ppc_recomp.262.cpp:16364); settings.txt
 //    already writes the same value, this is defense in depth.
 //  - The packages are staged by the Java side (DlcAssets): the full build
 //    script injects the 7 STFS files as APK assets assets/dlc/<content_id>
@@ -96,12 +96,19 @@ std::filesystem::path InstalledMarketplaceHeaderPath(
 bool IsInstalledMarketplaceContent(const std::filesystem::path& content_root,
                                    uint32_t title_id,
                                    const std::filesystem::path& package_path) {
+  // Hunt 4 P1-1: error_code overloads -- the throwing forms would abort
+  // the app at startup (uncaught -> std::terminate) on a real stat error.
+  std::error_code ec;
   return std::filesystem::is_directory(
              InstalledMarketplaceContentPath(content_root, title_id,
-                                             package_path)) &&
+                                             package_path),
+             ec) &&
+         !ec &&
          std::filesystem::is_regular_file(
              InstalledMarketplaceHeaderPath(content_root, title_id,
-                                            package_path));
+                                            package_path),
+             ec) &&
+         !ec;
 }
 
 std::vector<std::filesystem::path> DiscoverDlcSourceDirectories(
@@ -177,7 +184,8 @@ void InstallDlcPackages(rex::Runtime* runtime) {
   size_t skipped_count = 0;
 
   for (const auto& source_dir : source_dirs) {
-    if (!std::filesystem::is_directory(source_dir)) {
+    std::error_code dir_ec;
+    if (!std::filesystem::is_directory(source_dir, dir_ec) || dir_ec) {
       continue;
     }
 
@@ -189,17 +197,25 @@ void InstallDlcPackages(rex::Runtime* runtime) {
                     iter_ec.message());
         break;
       }
-      if (!entry.is_regular_file()) {
+      std::error_code entry_ec;
+      if (!entry.is_regular_file(entry_ec) || entry_ec) {
         continue;
       }
 
       const auto package_path = entry.path();
+      // Hunt 4 P2-1: never scan our own staging leftovers -- a .tmp is a
+      // byte prefix of its package, so its header reads as valid.
+      if (package_path.extension() == ".tmp") {
+        continue;
+      }
       std::error_code canonical_ec;
       auto package_key =
           std::filesystem::weakly_canonical(package_path, canonical_ec)
               .string();
       if (canonical_ec) {
-        package_key = std::filesystem::absolute(package_path).string();
+        std::error_code abs_ec;
+      auto abs_path = std::filesystem::absolute(package_path, abs_ec);
+      package_key = abs_ec ? package_path.string() : abs_path.string();
       }
       if (!seen_packages.insert(package_key).second) {
         continue;
