@@ -3,7 +3,7 @@
 Fecha: 2026-11-13. Teléfono de referencia: Helio G99 / Mali-G57 MC2.
 Base: v1.2 (HEAD 3435f60, run CI verde, juego arranca en el teléfono).
 
-La v1.2 arrancó en el teléfono real: logo de Ubisoft, pantalla de título,
+La v1.2 arrancó en el teléfono real: logo de la editora, pantalla de título,
 "Loading". El usuario reportó 3 bugs + 1 petición de diseño. Esta fase los
 arregla todos y descarta la home del launcher (dirección "port oficial").
 
@@ -16,7 +16,7 @@ Informes de investigación (solo lectura, previos a la implementación):
 
 ## 1. Controles — qué se quitó y por qué
 
-Verificado contra el original (manual oficial de Ubisoft, GamePressure,
+Verificado contra el original (manual oficial de la editora, GamePressure,
 GameFAQs, TrueAchievements): el juego usa **tres botones y dos sticks**
 (A, X, LT + stick izquierdo + stick derecho) más Start/B para menús.
 No hay botón de ataque ni de esquiva fuera de combate: el combate es por
@@ -278,7 +278,7 @@ vuelva a pasar, los scripts v13 ya lo hacen solos:
 `analysis/fase4-build-2.log`: BUILD SUCCESSFUL en 53 s (incremental).
 - APK: `private/ChildOfLight-recomp-v1.3.apk`, **24.553.811 B**,
   SHA-256 `de5da2673ff7546a90bcd18f79ad74485f73b29b24a28715e6e964bd5af3bae0`.
-- `apksigner verify` OK, firmante corazón (CN="Child of Light <3",
+- `apksigner verify` OK, firmante corazón (CN="el título <3",
   SHA-256 `3768a83d38837f424138c1570f77e111bd1777ff6df049d476e562a46bb189ab`,
   mismo que v1.1/v1.2).
 - `aapt2 dump badging`: package `com.rexauto.port.childoflight`,
@@ -311,7 +311,7 @@ vuelva a pasar, los scripts v13 ya lo hacen solos:
   original**. (Ojo: la primera extracción a /tmp salió truncada a 295 MB
   porque /tmp estaba al 100 % — no era un fallo de la APK; re-extraída en
   disco grande, MD5 exacto. /tmp limpiado después.)
-- Drive PRIVADO, carpeta "Child of Light recomp v1.3-full" (ID
+- Drive PRIVADO, carpeta "el port v1.3-full" (ID
   `1A9o916zgOxtu8RIYEQTfo1pwfRWtFPPY`), **19 archivos, todos
   `shared: false`**, tamaños exactos: 16 partes (.part00–.part15, 100 MiB
   salvo la última de 37.152.704 B) + MD5SUMS.txt + README-v1.3-full.txt +
