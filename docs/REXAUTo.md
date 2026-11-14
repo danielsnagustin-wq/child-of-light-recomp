@@ -70,7 +70,7 @@ Dos jobs encadenados:
 | Descargar + desempaquetar | `port-src-<name>` → `autoports/<name>/port` |
 | Host toolchain | `ninja-build libx11-xcb-dev libwayland-dev libwayland-client0 unzip zip` |
 | Java | Temurin 17 |
-| SDK Android | `tools/android_sdk.sh` → **ReXGlue SDK v0.10.0 + parches Android de `deivid22srk/hells-gate-recomp-android`** (caché con clave `android-sdk-v0.10.0-<hash de android/patches/*.patch y tools/android_sdk.sh>`) |
+| SDK Android | `tools/android_sdk.sh` → **ReXGlue SDK v0.10.0 + parches Android de `deivid22srk/hells-gate-recomp-android`** (caché con clave `android-sdk-v0.10.0-` + hash de los parches de `android/patches` y de `tools/android_sdk.sh`) |
 | NDK/CMake | sdkmanager: **CMake 3.31.1 + NDK 27.2.12479018** |
 | Assets | `tools/xbox360_titles.json` + portada → icono Android (`tools/android_icon.py`) |
 | Firma | Paso "CI signing key" (ver §6 — **la inconsistencia**) |
@@ -196,7 +196,7 @@ Fuente: `extract.py` de rexauto (líneas 18-31: "Xbox 360 ISOs (GDFX) likewise�
 ./extract-xiso ./salida ./ChildOfLight.iso
 ```
 
-Fuente: ConsoleMods Wiki, "Xbox: ISO Extraction & Repacking" (https://consolemods.org/wiki/index.php?title=Xbox:ISO_Extraction_%26_Repacking). Funciona con ISOs de Xbox 360. Ojo: **los releases de GitHub no traen binarios precompilados para Linux/macOS — hay que compilarlo desde el fuente**.
+Fuente: ConsoleMods Wiki, "Xbox: ISO Extraction & Repacking" — https://consolemods.org/wiki/index.php?title=Xbox:ISO_Extraction_%26_Repacking — Funciona con ISOs de Xbox 360. Ojo: **los releases de GitHub no traen binarios precompilados para Linux/macOS — hay que compilarlo desde el fuente**.
 
 **Opción C — xdvdfs (Rust, moderno) — NO FIABLE para Xbox 360.**
 
@@ -219,7 +219,7 @@ xex2ool basefile default.xex -o default.pe   # PE desencriptado y descomprimido
 sha256sum default.xex default.pe
 ```
 
-Fuente: crates.io `xex2ool` / `xex2` 0.2.0 (https://crates.io/crates/xex2ool — "Extract the decrypted, decompressed PE payload"; `xex2ool basefile game.xex -o game.pe`). Equivalente en Python: `x = xex2.Xex2.parse(data)` → `open("game.pe","wb").write(x.extract_basefile())` (PyPI `xex2` 0.2.0). Alternativa clásica: **XexTool** de xorloser (`xextool -b default.xex default.pe`).
+Fuente: crates.io `xex2ool` / `xex2` 0.2.0 — https://crates.io/crates/xex2ool — "Extract the decrypted, decompressed PE payload"; `xex2ool basefile game.xex -o game.pe`. Equivalente en Python: `x = xex2.Xex2.parse(data)` → `open("game.pe","wb").write(x.extract_basefile())` (PyPI `xex2` 0.2.0). Alternativa clásica: **XexTool** de xorloser (`xextool -b default.xex default.pe`).
 
 **Verificación tras extraer:** `xex2ool info` debe mostrar el Title ID (esperado `[redactado]`, a confirmar) y `file default.pe` debe mostrar un PE. El SHA-256 del `default.xex` es la clave de cualquier gabarito futuro.
 
@@ -243,6 +243,7 @@ ISO (usuario)
 5. **ReXGlue v0.10.1**: evaluar, no subir en silencio (ver §7.4).
 6. **DLCs, Igniculus, renderer nativo Mali** (ver §7.8–7.10): trabajo del camino B.
 7. **El workflow adaptado nunca se ha ejecutado** (no hay ISO todavía): el primer run validará el checkout doble (nuestro repo + rexauto en `rexauto/`), el pin del SDK y la generación de la APK.
+8. **Codegen de CI con register-as-local (cableado 2026-11-13, sin ejecutar):** el job `recompile` inyecta las 6 claves `*_as_local = true` (top-level) en el manifest que rexauto autora (fase `init`), resume con `--from setjmp`, corre `tools/localize_fix_col.py` sobre `generated/default/ppc_recomp.*.cpp` y verifica manifest + `*_init.cpp` + marcadores `LOCALIZE_FIX`. **Pendiente:** adaptar el script a la sintaxis del SDK (`DEFINE_REX_FUNC` / `REX_CALL_INDIRECT_FUNC`); el tripwire falla el job hasta entonces. **Corrección importante:** rexauto NO usa XenonRecomp (el codegen es `rexglue.exe` del SDK); los parches 0015–0022 no aplican al árbol del SDK y `recomp/col.toml` no se lee en CI. Informe: `~/workspace/research/ci-codegen-2026-11-13.md`.
 
 ---
 
