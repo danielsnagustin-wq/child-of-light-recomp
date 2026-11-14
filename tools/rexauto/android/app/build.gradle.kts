@@ -101,8 +101,11 @@ android {
 
     androidResources {
         // Full variant: the 1.5 GB game asset must stay uncompressed so the
-        // launcher can stream-copy it out (and aapt2 doesn't try to deflate
-        // 1.5 GB in this VM's RAM).
+        // VFS can open it by fd (AssetManager.openFd fails on compressed
+        // entries) -- and aapt2 doesn't try to deflate 1.5 GB in this VM's RAM.
+        // (Before Fase 5 this comment said "stream-copy it out": since v1.4
+        // there is no stream-copy, the VFS mounts the STFS from inside the
+        // APK. Hunt 2, P2-12.)
         noCompress += "stfs"
         // JPEGs are already compressed: deflating hero_bg.jpg gains nothing
         // and the compress task OOMs on this VM's 1 GB daemon heap (v1.2
