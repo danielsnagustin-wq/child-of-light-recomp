@@ -128,7 +128,7 @@ ningún vertex memexport en FH1), y el log del teléfono lo dirá.
 
 ## 4. Rediseño de la interfaz (misma APK v1.2)
 
-La home del launcher rexauto por defecto → home estilo Child of Light, en
+La home del launcher rexauto por defecto → home estilo el título, en
 español, hecha por un agente dedicado y verificada por mí (archivos, recursos
 y cableado; la prueba visual es en el teléfono):
 
@@ -239,7 +239,7 @@ teléfono real.
 
 El usuario trajo los 7 DLCs (2026-11-13 12:17–12:24) como .7z por chat.
 Verificados por mí uno por uno en `~/workspace/col-recomp/private/dlc/`:
-todos STFS LIVE válidos (magic "LIVE", Title ID 5841140D, carpeta 00000002),
+todos STFS LIVE válidos (magic "LIVE", Title ID [redactado], carpeta 00000002),
 tamaños y MD5 exactos según `private/dlc/README.md`:
 
 | DLC | Tamaño | MD5 |
@@ -355,7 +355,7 @@ qué (y el camino manual sigue ahí).
 - `detect_setjmp.py`; parche 0014 (fences ARM64); perfil Mali-G57 completo
   (docs/RENDIMIENTO.md); embellecer el código generado poco a poco (el usuario
   lo pidió con amor: renombrar/documentar por sistemas, sin inventar los
-  nombres originales de Ubisoft).
+  nombres originales de la editora).
 - Publicar el andamiaje del port en el repo (`autoports/` + `recomp/ppc/` hoy
   solo viven en esta VM); actualizar el README del repo ("Estado: Fase 0" ya
   no es verdad).
