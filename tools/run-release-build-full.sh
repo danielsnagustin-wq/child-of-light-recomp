@@ -1,4 +1,8 @@
 #!/bin/bash
+# OBSOLETO (hunt 2, P2-2, 2026-11-13): NO USAR. Sin el sed del keystore
+# (llego en v13): hoy fallaria con "No key with alias 'rexauto' found"
+# porque el keystore corazon trae el alias childoflight<3. Usar
+# tools/run-release-build-full-v141.sh. Se conserva como historia.
 # Fase 3 (v1.2-full): variante PRIVADA con el juego adentro. Log: analysis/fase3-build-full-1.log
 #
 # SOLO local, NUNCA CI, NUNCA repo: el STFS del juego (1,5 GB, copia privada
