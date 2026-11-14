@@ -6,7 +6,11 @@
 # afinidad del hilo principal a los nucleos grandes (P0 #4); rewind Bionic
 # "a+" en la cache de shaders (P0 #3); frame-skip de placeholders
 # desactivado por defecto; log de geometria de pintado (diagnostico Bug 1).
-cd /home/hatch/workspace/col-recomp/tools/rexauto/android
+set -euo pipefail
+cd /home/hatch/workspace/col-recomp/tools/rexauto/android || exit 1
+# Pre-chequeo (hunt 2, P1-2): sin keystore, Gradle construye una APK SIN
+# FIRMAR con exit 0. Fallar aqui, no entregar una APK que no instala.
+test -f ci-release.jks || { echo "ERROR: ci-release.jks no encontrado en $PWD"; exit 1; }
 # Keystore local: el keystore corazon (ci-release.jks) trae el alias
 # childoflight<3, pero build.gradle.kts dice rexauto (CI lo cambia con sed
 # tras restaurar el secreto). Espejo local: cambiarlo para el build y
@@ -28,3 +32,10 @@ export PATH=$JAVA_HOME/bin:$HOME/workspace/tools/gradle-8.14/bin:$PATH
   -PrexPortDir=$HOME/workspace/col-recomp/autoports/childoflight/port \
   -PrexSdkDir=$HOME/workspace/col-recomp/tools/rexauto/android/sdk/rexglue-sdk \
   -PrexVersionCode=5 -PrexVersionName=1.4.1
+# Verificacion final (hunt 2, P1-2): la APK existe y esta firmada. Con
+# pipefail el fallo de verify mata el script; sin esto, un build sin
+# keystore "exitoso" pasaba desapercibido.
+APK=app/build/outputs/apk/release/app-release.apk
+test -f "$APK" || { echo "ERROR: APK no generada: $APK"; exit 1; }
+"$HOME/workspace/android-sdk/build-tools/34.0.0/apksigner" verify --print-certs "$APK" | tee /home/hatch/workspace/col-recomp/private/verify-v141-normal.txt
+echo "[v141] APK verificada: $APK ($(stat -c%s "$APK") B)"
