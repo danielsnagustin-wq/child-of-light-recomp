@@ -1,4 +1,4 @@
-# Fase 0 — Análisis del XEX de Child of Light (Xbox 360)
+# Fase 0 — Análisis del XEX del título (Xbox 360)
 
 Fecha: 2026-11-13. Todo verificado contra el archivo real del juego
 (`ChildOfLight-XBLA`, STFS, MD5 `ad88061a06fba28e3434945f37cb3d57`).
@@ -7,7 +7,7 @@ Fecha: 2026-11-13. Todo verificado contra el archivo real del juego
 
 | Campo | Valor |
 |---|---|
-| Title ID | **5841140D** (confirmado por el XEX, no solo por la carpeta) |
+| Title ID | **[redactado]** (confirmado por el XEX, no solo por la carpeta) |
 | Media ID | 27A6BF29 |
 | Versión | 0.0.0.2 (base 0.0.0.2) |
 | Entry point | 0x82945848 |
@@ -50,7 +50,7 @@ ReXGlue implementa. Buena noticia para el port.
 | Case labels | 4.380 |
 | Sin resolver | **0** |
 
-Comparación: Case Zero 232 tablas / 6.114 labels. CoL está en el mismo
+Comparación: Case Zero 232 tablas / 6.114 labels. el título está en el mismo
 orden de magnitud. Archivo: `analysis/col-jumptables.toml` (8.457 líneas).
 
 ## XenonRecomp (prueba): COMPILA — 76.565 funciones
@@ -59,7 +59,7 @@ Primera pasada con `recomp/col.toml` (helpers CRT en 0, a modo de prueba):
 
 - **Exit 0. 301 archivos .cpp generados, 206 MB** en `recomp/ppc/`.
 - **76.565 funciones** en `ppc_func_mapping.cpp`
-  (Case Zero: 57.728 — CoL es más grande).
+  (Case Zero: 57.728 — el título es más grande).
 - Duración del run: ~11 s de CPU.
 
 ### Trabajo pendiente que la pasada deja medido
@@ -67,7 +67,7 @@ Primera pasada con `recomp/col.toml` (helpers CRT en 0, a modo de prueba):
 1. **Instrucciones no reconocidas: 9.389 sitios, 61 mnemónicos,
    1.168 funciones (1,53 % del total).** Es el trabajo más grande de la
    Fase 1. Comparación: Case Zero tuvo 42 sitios / 6 mnemónicos y los
-   cerró a cero; Asura's Wrath tuvo 3.192. CoL tiene ~3× más que Asura's.
+   cerró a cero; Asura's Wrath tuvo 3.192. el título tiene ~3× más que Asura's.
    - 6.124 son VMX/vector (vslh 2.420, vsrah 1.024, vsubshs 928,
      vspltish 609, vmaxsh 265, vsel128 264, vcfpuxws128 76, ...).
    - El resto: update-form loads/stores (stfsu 516, sthu 397, lfsu 316,
