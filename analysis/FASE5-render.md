@@ -1,4 +1,4 @@
-# Fase 5 — RENDER v1.4 (Child of Light, port nativo Xbox 360 → Android)
+# Fase 5 — RENDER v1.4 (el título, port nativo Xbox 360 → Android)
 
 Trabajo del worker RENDER. Base: v1.3, HEAD 205b41c. Árbol: `~/workspace/col-recomp/`.
 Raíz del SDK en este documento: `tools/rexauto/android/sdk/rexglue-sdk/`
@@ -34,7 +34,7 @@ escalado (×1,1426); las medidas de abajo ya están en píxeles reales (2340×10
 | Título (52958_3_u810.jpg) | Arte del título: rect (210, 0, 1920, 576) px reales. Corte nítido de 1 fila en y≈576 (fila 503 media 73,6 → fila 505 media 3,4). Pilares x 0–184 y 2151–2340. |
 | Cargando (52960_5_spvo.jpg) | Logo redondo: círculo completo centrado en (≈1170, 540, r≈139), cortado en y≈577 — ~62% superior visible, corte plano. Texto "Cargando..." visible debajo, en y≈990. |
 | Título, banner "Pulsa A" | Visible DEBAJO del corte, en y real 851–920. |
-| Logo UbiArt (52954) | CORRECTO: letterbox 16:9 completo. |
+| Logo el motor (52954) | CORRECTO: letterbox 16:9 completo. |
 | Gameplay (52963/52962) | CORRECTO: 1920×1080 con pilares laterales. |
 
 Coordenadas del guest: el corte en y presentada 576 ↔ y guest 384 (÷1,5;
@@ -261,7 +261,7 @@ Cambios en `SDK/src/core/threading_posix.cpp`:
   se devuelve el del handle señalizado.
 
 Efecto esperado (medido en Origins con el mismo mecanismo): el worker de
-audio pasó de 73% a 7% de un núcleo. En CoL debería verse como una caída
+audio pasó de 73% a 7% de un núcleo. En el título debería verse como una caída
 fuerte de trylock/unlock/clock_gettime en el próximo `profile.txt`.
 
 ### 3.3 P0 #1b — mprotect antes de parsear /proc/self/maps (IMPLEMENTADO)
