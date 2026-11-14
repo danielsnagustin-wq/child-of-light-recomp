@@ -1,9 +1,9 @@
-# FASE 4 — Controles reales de Child of Light (Xbox 360): investigación en internet
+# FASE 4 — Controles reales del título (Xbox 360): investigación en internet
 
 - **Fecha:** 2026-11-13
 - **Alcance:** solo lectura. Ningún archivo existente fue modificado; este archivo es nuevo.
 - **Objetivo:** determinar qué botón del mando de Xbox 360 usa realmente el juego, para limpiar el overlay táctil del port (hoy: LT, LB, RB, RT, D-pad, stick izquierdo, stick derecho, A, B, X, Y, `<<` `>>` y engranaje de ajustes).
-- **Contexto:** la v1.2 ya arrancó en el teléfono real (Helio G99 / Mali-G57 MC2): logo Ubisoft, título y Loading funcionan.
+- **Contexto:** la v1.2 ya arrancó en el teléfono real (Helio G99 / Mali-G57 MC2): logo la editora, título y Loading funcionan.
 
 ## 0. Método y regla de traducción PlayStation → Xbox
 
@@ -21,26 +21,26 @@ La mayoría de las fuentes describen los controles con botones de PlayStation (e
 | R1 | **RB** |
 | Stick izquierdo / derecho | Stick izquierdo / derecho |
 
-**Advertencia importante:** ninguna fuente consultada publica una tabla de controles **exclusiva de Xbox 360**. La fuente con tabla por plataforma (GamePressure) cubre PC, **Xbox One** y PS4. Xbox 360 y Xbox One son el mismo juego y el mismo motor (UbiArt Framework); se asume el mismo esquema en 360, pero eso es una **inferencia, no un dato verificado directamente**. Se marca como tal donde aplica.
+**Advertencia importante:** ninguna fuente consultada publica una tabla de controles **exclusiva de Xbox 360**. La fuente con tabla por plataforma (GamePressure) cubre PC, **Xbox One** y PS4. Xbox 360 y Xbox One son el mismo juego y el mismo motor (el motor); se asume el mismo esquema en 360, pero eso es una **inferencia, no un dato verificado directamente**. Se marca como tal donde aplica.
 
-**StrategyWiki:** buscado explícitamente — **no existe página de Child of Light en StrategyWiki** (la búsqueda solo devolvió otros juegos). No se pudo usar como fuente.
+**StrategyWiki:** buscado explícitamente — **no existe página del título en StrategyWiki** (la búsqueda solo devolvió otros juegos). No se pudo usar como fuente.
 
 ## 1. Fuentes consultadas
 
 | # | Fuente | URL | Qué aporta |
 |---|---|---|---|
-| F1 | **Manual oficial** de Child of Light (PDF de Ubisoft, servido en Steam) | https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/256290/manuals/ChildOfLight-en.pdf?t=1694554365 | Lista de acciones de Aurora e Igniculus (Move, Jump, Fly, Dash, Interact, Glow), habilidades de Igniculus (curar, cegar, ralentizar en combate), comandos de combate (Act, Potions, Swap, Flee), menú de pausa (Inventory, Oculi, Skills, Party, Map, Confessions). Los iconos de botón del PDF se pierden en la extracción de texto: el manual **no nombra botones con letras** en el texto extraíble, solo las acciones. |
-| F2 | **GamePressure — Child of Light: Controls** (tabla PC / Xbox One / PS4) | https://www.gamepressure.com/child-of-light/controls/zfa149 | Tabla de acciones por plataforma. Los botones son **imágenes**; se descargaron y se identificaron visualmente (ver §2). Es la única fuente con el mapa botón→acción por plataforma. |
+| F1 | **Manual oficial** del título (PDF de la editora, servido en Steam) | https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/256290/manuals/ChildOfLight-en.pdf?t=1694554365 | Lista de acciones de Aurora e Igniculus (Move, Jump, Fly, Dash, Interact, Glow), habilidades de Igniculus (curar, cegar, ralentizar en combate), comandos de combate (Act, Potions, Swap, Flee), menú de pausa (Inventory, Oculi, Skills, Party, Map, Confessions). Los iconos de botón del PDF se pierden en la extracción de texto: el manual **no nombra botones con letras** en el texto extraíble, solo las acciones. |
+| F2 | **GamePressure — el título: Controls** (tabla PC / Xbox One / PS4) | https://www.gamepressure.com/child-of-light/controls/zfa149 | Tabla de acciones por plataforma. Los botones son **imágenes**; se descargaron y se identificaron visualmente (ver §2). Es la única fuente con el mapa botón→acción por plataforma. |
 | F3 | **GameFAQs — Review Xbox 360** ("The best fairy tale since Snow White!") | https://Gamefaqs.gamespot.com/xbox360/730866-child-of-light/reviews/162392 | Describe controles con nomenclatura PS (✕ saltar, □ interactuar, L2 brillo, 2º jugador con R2), combate (✕ confirmar, ○ volver) y la frase clave: "the controls utilize very few of the buttons on the controller". |
 | F4 | **GameFAQs — Review PS3/Stadia** ("Engrossing, Beautiful, Outstanding") | https://gamefaqs.gamespot.com/ps3/730868-child-of-light/reviews/157966 | "You really only ever use three buttons (X, square, and L2) and the two sticks in the whole game." ✕ = saltar, volar, subir/bajar de plano, **dash**; □ = acción/hablar/entrar; L2 = brillo de Igniculus. |
-| F5 | **Eggplante — Child of Light Review** | https://www.eggplante.com/2014/07/10/child-light-review/ | "Igniculus can be moved with the right stick on any platform… only be moved with the right stick on Xbox 360, Xbox One and PS3". 2º jugador controla a Igniculus en local en todas las versiones salvo Vita. |
+| F5 | **Eggplante — el título Review** | https://www.eggplante.com/2014/07/10/child-light-review/ | "Igniculus can be moved with the right stick on any platform… only be moved with the right stick on Xbox 360, Xbox One and PS3". 2º jugador controla a Igniculus en local en todas las versiones salvo Vita. |
 | F6 | **GameFAQs — Guide and Walkthrough Xbox 360/One, por CanWizard** | https://gamefaqs.gamespot.com/xbox360/730866-child-of-light/faqs/69461 | No toca controles ("the manual will probably help you with controls and button layouts, which is a subject I will not be touching"). Confirma el menú de pausa como guía de objetivo ("open up the PAUSE MENU"). |
 | F7 | **Video Games Blogger — Confessions Locations Guide** | https://www.videogamesblogger.com/2014/05/02/child-of-light-confessions-locations-guide.htm | "To read the Confessions, press the **start/pause button/key** to go to the Pause menu". Verifica **Start = menú de pausa**. |
 | F8 | **TrueAchievements — Story walkthrough Act 3** | https://www.trueachievements.com/game/Child-of-Light/walkthrough/5 | "select **Flee from the Action Wheel**"; enviar Oculi a un amigo: abrir menú → Oculi → pulsar el botón de regalo (icono no transcrito en el texto). |
 | F9 | **dtgre — How to donate an Oculi to a friend** | https://www.dtgre.com/2014/06/child-of-light-how-to-donate-oculi-to.html?m=0 | En PS3, regalar Oculi = **□ (Square)** sobre el Oculi → lista de amigos → elegir cantidad con izquierda/derecha → ✕ confirmar. Es decir, en Xbox sería **X** (no Y ni ningún botón extra). |
 | F10 | **Quacksouls — The Girl and the Firefly (walkthrough)** | https://quacksouls.github.io/aurora/girl-and-firefly/ | "Surprise Strike": poner a Igniculus sobre la cabeza del enemigo y **mantener el brillo**, acercar a Aurora al torso y soltar → ataque por sorpresa. Curar: Igniculus sobre Aurora + mantener brillo. |
-| F11 | **Outcyders — Child of Light Review** | https://www.outcyders.net/review/child-of-light-review | Combate: atacar (físico o mágico con MP), **defender**, hechizos buff/debuff, pociones, cambiar personaje, **huir**; todo como opciones de menú, no como botones dedicados. |
-| F12 | **Wikipedia — Child of Light** | https://en.wikipedia.org/wiki/Child_of_Light | "The player can freely move Igniculus to open chests that Aurora cannot reach, as well as shine his light on an enemy to slow it down or on an ally to heal them." |
+| F11 | **Outcyders — el título Review** | https://www.outcyders.net/review/child-of-light-review | Combate: atacar (físico o mágico con MP), **defender**, hechizos buff/debuff, pociones, cambiar personaje, **huir**; todo como opciones de menú, no como botones dedicados. |
+| F12 | **Wikipedia — el título** | https://en.wikipedia.org/wiki/Child_of_Light | "The player can freely move Igniculus to open chests that Aurora cannot reach, as well as shine his light on an enemy to slow it down or on an ally to heal them." |
 
 ## 2. El mapa botón → acción, verificado con las imágenes de GamePressure (F2)
 
@@ -112,7 +112,7 @@ El menú de pausa enlaza a Inventory, Oculi, Skills, Party, Map of Lemuria y Con
 | Acción | Botón Xbox 360 | Verificación |
 |---|---|---|
 | Abrir / cerrar menú de pausa | **Start** | F7, F6 |
-| Navegar por las opciones | **Stick izquierdo o D-pad** | No verificado con fuente explícita para CoL; es la convención universal y la única entrada direccional del juego. Ver §6. |
+| Navegar por las opciones | **Stick izquierdo o D-pad** | No verificado con fuente explícita para el título; es la convención universal y la única entrada direccional del juego. Ver §6. |
 | Confirmar / entrar | **A** | F3 (batalla; mismo botón de confirmación del juego). Para menús de pausa en general, **no hay fuente explícita** que lo nombre; se asume por coherencia con F1 ("Confirm") y F3. |
 | Volver / cancelar / salir del menú | **B** | F3 (○ = back); F1 ("Back"). Misma salvedad que Confirmar. |
 | Cambiar de pestaña/sección con LB/RB | **NO VERIFICADO.** Ninguna fuente menciona LB/RB para cambiar de pestaña en el menú de pausa ni en ningún otro sitio. | — |
@@ -137,11 +137,11 @@ El menú de pausa enlaza a Inventory, Oculi, Skills, Party, Map of Lemuria y Con
 | **RB** | **Sin función en ninguna fuente.** Igual que LB. | No se usa (según toda la evidencia disponible). |
 | **LT** | Brillo de Igniculus (mantener). Esencial. | Se usa — ver §3/§4. |
 | **RT** | Interactuar con Igniculus (Xbox One, F2). En 2P, brillo según F3 (tensión sin resolver, §6). | Se usa — ver §3/§6. |
-| **D-pad** | **Sin función verificada explícitamente en Child of Light.** Ninguna fuente lo nombra para este juego. Por convención de la época y del género, navega menús; si mueve a Aurora en exploración es **no verificado**. | No verificado; probable solo menús. |
+| **D-pad** | **Sin función verificada explícitamente en el título.** Ninguna fuente lo nombra para este juego. Por convención de la época y del género, navega menús; si mueve a Aurora en exploración es **no verificado**. | No verificado; probable solo menús. |
 | **L3** (click stick izq.) | **Sin función en ninguna fuente.** | No se usa (según toda la evidencia disponible). |
 | **R3** (click stick der.) | **Sin función en ninguna fuente.** | No se usa (según toda la evidencia disponible). |
 | **Start** | Menú de pausa. | Se usa — ver §5. |
-| **Back** | **Sin función en ninguna fuente.** Ninguna fuente lo nombra para CoL. (En 360, Back suele no hacer nada en este juego; eso es conjetura, no dato.) | No verificado; casi seguro sin uso. |
+| **Back** | **Sin función en ninguna fuente.** Ninguna fuente lo nombra para el título. (En 360, Back suele no hacer nada en este juego; eso es conjetura, no dato.) | No verificado; casi seguro sin uso. |
 | **Y** | **Sin función en ninguna fuente.** No aparece en ninguna tabla ni descripción. F2 lista solo 3 acciones de Aurora (mover, interactuar, saltar/volar) y 3 de Igniculus (mover, interactuar, brillo): Y no es ninguna. | No se usa (según toda la evidencia disponible). |
 | **Botón Xbox Guide** | Abre la guía de Xbox (sistema), no es del juego. | Fuera del juego; no va en el overlay. |
 
@@ -163,7 +163,7 @@ Leyenda de "necesario": **SÍ** = el juego es incompletable o muy incómodo sin 
 | **RB** | **Sin función verificada en ninguna fuente.** | **NO** — quitar. |
 | **LT** | Mantener: brillo de Igniculus (iluminar, abrir contenedores, interruptores, cegar enemigos, curar aliados, ralentizar enemigos en combate). | **SÍ** — esencial; es la mitad del juego (puzles + combate). Debe ser **mantener**, no pulsación simple. |
 | **RT** | Interactuar con Igniculus (Xbox One, F2): abrir cofres y recoger objetos fuera del alcance de Aurora. En 2P, brillo (F3, sin resolver). | **SÍ, con reserva** — mantener por ahora: es la única vía de interactuar a distancia con Igniculus. Si al probar en el teléfono RT no hace nada en 360 (el dato es de Xbox One), entonces pasa a NO. |
-| **D-pad** | **Sin función verificada explícitamente en CoL.** Por convención: navegar menús. En exploración, no verificado si mueve a Aurora. | **SÍ, con reserva** — mantener por navegación de menús/combate (alternativa discreta al stick analógico). Es el más prescindible de los "SÍ": si falta espacio, el stick izquierdo ya navega menús. |
+| **D-pad** | **Sin función verificada explícitamente en el título.** Por convención: navegar menús. En exploración, no verificado si mueve a Aurora. | **SÍ, con reserva** — mantener por navegación de menús/combate (alternativa discreta al stick analógico). Es el más prescindible de los "SÍ": si falta espacio, el stick izquierdo ya navega menús. |
 | **Start** | Menú de pausa (Inventario, Oculi, Habilidades, Grupo, Mapa, Confesiones). | **SÍ** — sin él no hay inventario ni habilidades ni guardado de Oculi. Puede ser un botón pequeño, pero debe existir. |
 | **Back** | **Sin función verificada en ninguna fuente.** | **NO** — quitar (B ya hace "volver" en menús). |
 | **Engranaje (ajustes)** | No es un botón del juego: abre los ajustes del propio overlay. | **SÍ** — propio del port; no es del juego pero el overlay lo necesita (escala/opacidad). Puede ir pequeño o en el menú de pausa del port, pero no quitar la función. |
@@ -197,7 +197,7 @@ Eso deja el overlay en **los 2 sticks + 3 botones de acción (A/B/X) + 2 gatillo
 
 ## 11. Fuentes (URLs completas)
 
-- F1 Manual oficial (Ubisoft / Steam): https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/256290/manuals/ChildOfLight-en.pdf?t=1694554365
+- F1 Manual oficial (la editora / Steam): https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/256290/manuals/ChildOfLight-en.pdf?t=1694554365
 - F2 GamePressure Controls: https://www.gamepressure.com/child-of-light/controls/zfa149
 - F3 GameFAQs review Xbox 360: https://Gamefaqs.gamespot.com/xbox360/730866-child-of-light/reviews/162392
 - F4 GameFAQs review PS3/Stadia: https://gamefaqs.gamespot.com/ps3/730868-child-of-light/reviews/157966
@@ -209,4 +209,4 @@ Eso deja el overlay en **los 2 sticks + 3 botones de acción (A/B/X) + 2 gatillo
 - F10 Quacksouls walkthrough: https://quacksouls.github.io/aurora/girl-and-firefly/
 - F11 Outcyders review: https://www.outcyders.net/review/child-of-light-review
 - F12 Wikipedia: https://en.wikipedia.org/wiki/Child_of_Light
-- StrategyWiki: sin página de Child of Light (búsqueda sin resultados para este juego).
+- StrategyWiki: sin página del título (búsqueda sin resultados para este juego).
