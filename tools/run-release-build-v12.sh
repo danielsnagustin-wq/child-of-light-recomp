@@ -1,4 +1,8 @@
 #!/bin/bash
+# OBSOLETO (hunt 2, P2-2, 2026-11-13): NO USAR. Sin el sed del keystore
+# (llego en v13): hoy fallaria con "No key with alias 'rexauto' found"
+# porque el keystore corazon trae el alias childoflight<3. Usar
+# tools/run-release-build-v141.sh. Se conserva como historia.
 # Fase 3 (v1.2): full release build (local, offline). Log: analysis/fase3-build-1.log
 # Cambios frente a v1.1: parche SDK rexglue-sdk-v0.10.0-mali-vertex-stores
 # (relaja vertexPipelineStoresAndAtomics + fillModeNonSolid en Mali) y rediseño
