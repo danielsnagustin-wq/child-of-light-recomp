@@ -107,7 +107,14 @@ add_library(main SHARED
     android_gamepad.cpp
     android_main.cpp
     stfs_asset_jni.cpp
-    "${REX_PORT_DIR}/src/main.cpp"
+    # M1 v1.4.2: the port src/main.cpp is NOT used here. It registers
+    # ChildOfLightApp, which has no ReXApp hooks; col_main.cpp registers
+    # ColDlcApp instead (same "childoflight" identifier), whose OnPostSetup
+    # installs the DLC packages. Keeping the registration in this tracked
+    # tree also means a future `rexglue init` regenerating the port
+    # directory cannot drop the hook.
+    col_main.cpp
+    col_dlc_installer.cpp
     "${REXSDK_DIR}/src/ui/rex_app.cpp"
 )
 target_include_directories(main PRIVATE
