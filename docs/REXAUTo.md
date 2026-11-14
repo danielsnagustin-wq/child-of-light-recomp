@@ -1,7 +1,7 @@
-# rexauto para Child of Light — integración
+# rexauto para el título — integración
 
 **Fecha:** 2026-11-13.
-**Proyecto:** port nativo de Child of Light (Xbox 360 → Android) por recompilación estática.
+**Proyecto:** port nativo del título (Xbox 360 → Android) por recompilación estática.
 **Repo de trabajo:** `danielsnagustin-wq/child-of-light-recomp` (público por decisión del usuario 2026-11-13; modelo: código público + APK solo como artefacto con retención de 7 días, nunca Release público — ver `docs/DMCA.md` y §7.3).
 **Entrada del usuario:** el juego de Xbox 360 (paquete XBLA-STFS propio, en Drive).
 **Fuentes verificadas (leídas enteras el 13-11-2026):** README de rexauto, `.github/workflows/android.yml` (650 líneas), `.github/workflows/recompile.yml` (638 líneas), `extract.py` (1.832 líneas), listado del directorio `.github/workflows` (solo existen esos 2 workflows).
@@ -25,7 +25,7 @@
 
 **Límite declarado por el propio autor (README):** *"rexauto gets you to a booting, guest-code-executing build, automatically. It does NOT close per-title GPU/emulation gaps."* — rexauto llega a un build que arranca; los huecos de GPU/runtime por título siguen siendo trabajo manual.
 
-**Títulos llevados por su pipeline (tabla honesta del README):** Skate 3 (playable), GTA San Andreas HD (gameplay), GTA V (reaches gameplay), Dragon Ball Z: Budokai 3 HD (battle running), Captain America: Super Soldier (gameplay), WWE SmackDown vs. Raw 2007 (playable to menu), Gears of War: Judgment (boots, converges), Crash of the Titans (boots). Flota de regresión de ~30 títulos. **Child of Light no está entre ellos ni en su base de gabaritos** (14 filas / 13 títulos; el UbiArt más cercano es `rayman3hd` con 14 curas). CoL partiría de cero: heal completo desde el principio.
+**Títulos llevados por su pipeline (tabla honesta del README):** Skate 3 (playable), GTA San Andreas HD (gameplay), GTA V (reaches gameplay), Dragon Ball Z: Budokai 3 HD (battle running), Captain America: Super Soldier (gameplay), WWE SmackDown vs. Raw 2007 (playable to menu), Gears of War: Judgment (boots, converges), Crash of the Titans (boots). Flota de regresión de ~30 títulos. **el título no está entre ellos ni en su base de gabaritos** (14 filas / 13 títulos; el el motor más cercano es `rayman3hd` con 14 curas). el título partiría de cero: heal completo desde el principio.
 
 ---
 
@@ -39,7 +39,7 @@
 6. **runheal** — ejecuta el juego; cada `invalid or unregistered function at 0xADDR` que encuentra el dispatcher se registra, se reconstruye y se re-ejecuta, hasta que no quede ninguna.
 7. **run** — lo lanza.
 
-**Base de datos compartida de "curas" (`gabaritos/`):** una vez que un título converge, sus `functions.toml` (clave SHA-256 del `default.xex`) se publican y el siguiente que recompile ese binario exacto las siembra por adelantado. Para CoL no hay gabarito: el primer run hace el heal completo.
+**Base de datos compartida de "curas" (`gabaritos/`):** una vez que un título converge, sus `functions.toml` (clave SHA-256 del `default.xex`) se publican y el siguiente que recompile ese binario exacto las siembra por adelantado. Para el título no hay gabarito: el primer run hace el heal completo.
 
 **SDK fijado por hash:** rexauto se niega a correr con un SDK distinto al fijado, sin override (en la GUI). En CI existe el input `sdk_url` para sobreescribirlo. El SDK fijado es **ReXGlue v0.10.0**.
 
@@ -87,8 +87,8 @@ Dos jobs encadenados:
 ## 4. La entrada: la ISO del usuario
 
 - **Lo que acepta rexauto:** ISO (GDFX/XDVDFS), GoD (SVOD), STFS (CON/LIVE/PIRS), `default.xex` suelto, `.zip` con uno de ellos, o carpeta extraída. La URL puede ser directa, de Google Drive o de Dropbox (`tools/ci_fetch.py` la resuelve).
-- **Matiz importante de CoL:** en Xbox 360 Child of Light fue **solo digital (XBLA, ~1,47 GB); no hubo disco físico**. Por tanto la "ISO" del usuario es casi seguro una de estas tres cosas: (a) un paquete GoD convertido a ISO (p. ej. con GOD2ISO), (b) un paquete XBLA reempaquetado como ISO, o (c) una ISO construida desde los archivos extraídos. **Al pipeline no le importa cuál sea** — rexauto acepta las tres formas — pero hay que verificarlo al recibirla: extraer y comprobar que dentro está `default.xex` (ver §8).
-- **Title ID:** rexauto lo lee del XEX (`tools/title_meta.py`) y lo usa para el nombre del paquete y para rechazar dumps de otro título. El Title ID citado en fuentes secundarias es **`5841140D`** (Media ID `27A6BF29`), **NO verificado** — la confirmación definitiva es el dump. El workflow adaptado NO hardcodea el Title ID; lo toma de los outputs del job 1 y lo deja como TODO a confirmar tras el primer run.
+- **Matiz importante del título:** en Xbox 360 el título fue **solo digital (XBLA, ~1,47 GB); no hubo disco físico**. Por tanto la "ISO" del usuario es casi seguro una de estas tres cosas: (a) un paquete GoD convertido a ISO (p. ej. con GOD2ISO), (b) un paquete XBLA reempaquetado como ISO, o (c) una ISO construida desde los archivos extraídos. **Al pipeline no le importa cuál sea** — rexauto acepta las tres formas — pero hay que verificarlo al recibirla: extraer y comprobar que dentro está `default.xex` (ver §8).
+- **Title ID:** rexauto lo lee del XEX (`tools/title_meta.py`) y lo usa para el nombre del paquete y para rechazar dumps de otro título. El Title ID citado en fuentes secundarias es **`[redactado]`** (Media ID `27A6BF29`), **NO verificado** — la confirmación definitiva es el dump. El workflow adaptado NO hardcodea el Title ID; lo toma de los outputs del job 1 y lo deja como TODO a confirmar tras el primer run.
 - **Nombre del proyecto:** `childoflight` (rexauto exige `[a-z0-9_]{1,40}`; `child-of-light` con guiones es inválido).
 - **Sin title update:** recompilar primero **sin TU** (build retail base). Existe TU2 (anuncio de trainer Ko-fi); los parches cambian direcciones e invalidan los hints — se evalúa después.
 
@@ -101,7 +101,7 @@ Dos jobs encadenados:
 | **A. rexauto** (workflow adaptado `.github/workflows/recompile-android-rexauto.yml`) | "¿Bootea?" — primer arranque en el teléfono, con GPU Xenos **emulada** (`librexgpu-xenos.so`) | **Días** una vez llegue la ISO | rexauto tal cual (SDK v0.10.0 + parches hells-gate, NDK r27) |
 | **B. Fork de RaymanOriginsRecomp** | "¿Jugable a 60 fps?" — renderer nativo Vulkan + perfil Mali-G57 | **Semanas** | Los 7 parches Android de Origins (`android/rexglue-patches/0001–0007`), `android/app/` + `build_apk.sh`, pack tools, fontanería del renderer nativo, detector de jump tables |
 
-El camino A no sustituye al B: el APK de rexauto usa la GPU emulada (más lenta, pero suficiente para saber si el juego arranca, abre sus `.ipk` y llega al menú). El camino B es el que puede dar 60 fps reales. El trabajo por título (jump tables, límites de función, imports kernel/XAM, shaders UbiArt, Igniculus en el stick derecho, DLCs) es el mismo en ambos y parte de cero.
+El camino A no sustituye al B: el APK de rexauto usa la GPU emulada (más lenta, pero suficiente para saber si el juego arranca, abre sus `.ipk` y llega al menú). El camino B es el que puede dar 60 fps reales. El trabajo por título (jump tables, límites de función, imports kernel/XAM, shaders el motor, Igniculus en el stick derecho, DLCs) es el mismo en ambos y parte de cero.
 
 ---
 
@@ -125,15 +125,15 @@ Ese paso genera el keystore **de nuevo en cada run, sobre un checkout limpio, si
 - Si existen los secretos `CI_KEYSTORE_BASE64` (keystore en base64) y `CI_KEYSTORE_PASSWORD`, se restaura ese keystore y se firma con él → la misma clave en todos los runs, las APK actualizan conservando datos.
 - Si no existen, se genera uno nuevo y el workflow emite una advertencia explícita (`::warning::`) de que esa APK no actualizará sobre builds anteriores.
 - **HECHO 2026-11-13 (llave personalizada con corazón):** keystore generado y
-  guardado como secreto. Alias `childoflight<3`, `CN="Child of Light <3",
-  OU=Aurora, O=Child of Light Recomp`, RSA 4096, SHA384withRSA, válido
+  guardado como secreto. Alias `childoflight<3`, `CN="el título <3",
+  OU=Aurora, O=el port`, RSA 4096, SHA384withRSA, válido
   hasta 2054-03-31, SHA-256 `8ea1eb60…`. Comando (el `<` se escapa como
   `\<`, si no keytool lo rechaza; la contraseña sigue siendo `rexauto`,
   la misma que usa rexauto en su YAML, ya pública):
   ```bash
   keytool -genkeypair -v -keystore ci-release.jks -storepass rexauto -keypass rexauto \
     -alias 'childoflight<3' -keyalg RSA -keysize 4096 -sigalg SHA384withRSA -validity 10000 \
-    -dname 'CN=Child of Light \<3, OU=Aurora, O=Child of Light Recomp'
+    -dname 'CN=el título \<3, OU=Aurora, O=el port'
   base64 -w0 ci-release.jks   # → secreto CI_KEYSTORE_BASE64
   # CI_KEYSTORE_PASSWORD = rexauto
   ```
@@ -155,11 +155,11 @@ Ese paso genera el keystore **de nuevo en cada run, sobre un checkout limpio, si
 | 1 | **URL de la ISO** (directa / Drive / Dropbox) + SHA-256 opcional | Pendiente del usuario. El workflow la pide como input `iso_url`; sin ella no corre. |
 | 2 | **Keystore CI** (secretos `CI_KEYSTORE_BASE64` + `CI_KEYSTORE_PASSWORD`) | **RESUELTO 2026-11-13:** llave personalizada `childoflight<3` (RSA 4096, SHA-256 `8ea1eb60…`), secretos creados 03:18 y `CI_KEYSTORE_BASE64` actualizado a la llave del corazón 03:24. Ver §6. |
 | 3 | **Repositorio privado vs público** | **RESUELTO 2026-11-13 (decisión del usuario): PÚBLICO** — para tener minutos ilimitados + runners grandes. El guard que fallaba si el repo no era privado se quitó del workflow. Modelo: código público, APK **nunca** como Release público, solo artefacto de Actions con retención de 7 días (ver `docs/DMCA.md`). |
-| 4 | **ReXGlue v0.10.0 (pin de rexauto) vs v0.10.1** | Pin **v0.10.0** (lo que usa rexauto, verificado por hash). La v0.10.1 (06-11-2026) trae fix de vídeo `vpkuwus`/`vpkuhus` (relevante para las cinemáticas de CoL) e input de Xbox 360, pero rexauto se niega a correr con otro SDK; subir de versión exige cambiar el pin en rexauto y re-verificar. NO subir en silencio. |
-| 5 | **`runheal` en Android** | rexauto lo pone en `false` por defecto en Android (en PC es `true`). Nuestra adaptación lo pone en **`true` + `heal_iters: 6`**: sin gabarito previo de CoL, el heal en Windows es la única fuente de curas. Es más lento, pero es lo que hace converger un título nuevo. |
-| 6 | **Jump tables sin IDA en CI** | **RESUELTO 2026-11-13 (Fase 0):** scanner de wivi514 (`find_jumptables.py`) sobre la imagen plana del XEX de CoL con el rango real de .text → **192 tablas (98 absolute + 44 offset16 + 50 offset8), 4.380 labels, 0 sin resolver** (`analysis/col-jumptables.toml`). XenonAnalyse stock da 0 (fallo de detección conocido). Ver `analysis/FASE0.md`. |
-| 7 | **Title ID** | **CONFIRMADO 2026-11-13 por la carpeta real en Drive**: `5841140D` (`Child of Light (World) (XBLA)/5841140D/000D0000/FB24D252…`, 1.585.451.008 B, MD5 `ad88061a06fba28e3434945f37cb3d57`). |
-| 8 | **DLCs de CoL** | No verificado cómo se añaden DLCs STFS adicionales al mismo Title ID en el launcher de rexauto (importa UN paquete XBLA por título). TODO. |
+| 4 | **ReXGlue v0.10.0 (pin de rexauto) vs v0.10.1** | Pin **v0.10.0** (lo que usa rexauto, verificado por hash). La v0.10.1 (06-11-2026) trae fix de vídeo `vpkuwus`/`vpkuhus` (relevante para las cinemáticas del título) e input de Xbox 360, pero rexauto se niega a correr con otro SDK; subir de versión exige cambiar el pin en rexauto y re-verificar. NO subir en silencio. |
+| 5 | **`runheal` en Android** | rexauto lo pone en `false` por defecto en Android (en PC es `true`). Nuestra adaptación lo pone en **`true` + `heal_iters: 6`**: sin gabarito previo del título, el heal en Windows es la única fuente de curas. Es más lento, pero es lo que hace converger un título nuevo. |
+| 6 | **Jump tables sin IDA en CI** | **RESUELTO 2026-11-13 (Fase 0):** scanner de wivi514 (`find_jumptables.py`) sobre la imagen plana del XEX del título con el rango real de .text → **192 tablas (98 absolute + 44 offset16 + 50 offset8), 4.380 labels, 0 sin resolver** (`analysis/col-jumptables.toml`). XenonAnalyse stock da 0 (fallo de detección conocido). Ver `analysis/FASE0.md`. |
+| 7 | **Title ID** | **CONFIRMADO 2026-11-13 por la carpeta real en Drive**: `[redactado]` (`el título (World) (XBLA)/[redactado]/000D0000/FB24D252…`, 1.585.451.008 B, MD5 `ad88061a06fba28e3434945f37cb3d57`). |
+| 8 | **DLCs del título** | No verificado cómo se añaden DLCs STFS adicionales al mismo Title ID en el launcher de rexauto (importa UN paquete XBLA por título). TODO. |
 | 9 | **Igniculus** | El gamepad de rexauto es genérico; el control de Igniculus (stick derecho, como en Vita) no existe. **Verificado en la segunda ronda (2026-11-13): la versión 360 SÍ permite controlar a Igniculus con el 2º mando** (stick derecho + mantener LT, 5 fuentes). Falta implementarlo en el port. |
 | 10 | **Renderer nativo vs emulado** | El APK de rexauto usa GPU emulada. Para 60 fps en Mali probablemente haga falta el renderer nativo (camino B). El perfil Mali-G57 (Vulkan 1.1, 4 descriptor sets, sin `shaderInt64`) y la receta anti-DEVICE_LOST (validación de Vulkan + PanVK) van en el camino B. |
 
@@ -221,7 +221,7 @@ sha256sum default.xex default.pe
 
 Fuente: crates.io `xex2ool` / `xex2` 0.2.0 (https://crates.io/crates/xex2ool — "Extract the decrypted, decompressed PE payload"; `xex2ool basefile game.xex -o game.pe`). Equivalente en Python: `x = xex2.Xex2.parse(data)` → `open("game.pe","wb").write(x.extract_basefile())` (PyPI `xex2` 0.2.0). Alternativa clásica: **XexTool** de xorloser (`xextool -b default.xex default.pe`).
 
-**Verificación tras extraer:** `xex2ool info` debe mostrar el Title ID (esperado `5841140D`, a confirmar) y `file default.pe` debe mostrar un PE. El SHA-256 del `default.xex` es la clave de cualquier gabarito futuro.
+**Verificación tras extraer:** `xex2ool info` debe mostrar el Title ID (esperado `[redactado]`, a confirmar) y `file default.pe` debe mostrar un PE. El SHA-256 del `default.xex` es la clave de cualquier gabarito futuro.
 
 ### 8.4 Resumen de la cadena
 
@@ -238,8 +238,8 @@ ISO (usuario)
 
 1. **URL de la ISO + SHA-256** (input del workflow; **en curso**: el paquete XBLA está en Drive, descargándose — ver §7.1).
 2. **Keystore CI** como secretos (ver §6); sin ellos, cada APK firma con clave nueva.
-3. **Title ID** — confirmado `5841140D` con el dump en Drive.
-4. **Jump tables sin IDA** (ver §7.6): elegir detector y probarlo con el XEX de CoL.
+3. **Title ID** — confirmado `[redactado]` con el dump en Drive.
+4. **Jump tables sin IDA** (ver §7.6): elegir detector y probarlo con el XEX del título.
 5. **ReXGlue v0.10.1**: evaluar, no subir en silencio (ver §7.4).
 6. **DLCs, Igniculus, renderer nativo Mali** (ver §7.8–7.10): trabajo del camino B.
 7. **El workflow adaptado nunca se ha ejecutado** (no hay ISO todavía): el primer run validará el checkout doble (nuestro repo + rexauto en `rexauto/`), el pin del SDK y la generación de la APK.
