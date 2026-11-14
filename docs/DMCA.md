@@ -1,7 +1,7 @@
 # DMCA / modelo legal del port
 
 **Fecha:** 2026-11-13.
-**Proyecto:** port nativo de Child of Light (Xbox 360 → Android) por recompilación
+**Proyecto:** port nativo del título (Xbox 360 → Android) por recompilación
 estática, en el repo `danielsnagustin-wq/child-of-light-recomp` (público por
 decisión del propietario, 2026-11-13).
 
@@ -27,7 +27,7 @@ en su propio teléfono.
 
 - La recompilación estática traduce el código del ejecutable a C++ y luego a
   ARM64; no redistribuye el juego ni sus assets.
-- Ubisoft sí ha presentado DMCAs en 2026 (caso Slopsmith, 131 repos): ese
+- la editora sí ha presentado DMCAs en 2026 (caso Slopsmith, 131 repos): ese
   proyecto llevaba las claves AES del juego incrustadas en el código y
   extraía las canciones base para usarlas sin el juego. Este port no hace
   ninguna de las dos cosas: no lleva claves ni extrae contenido del juego.
@@ -37,7 +37,7 @@ en su propio teléfono.
 
 ## Contacto por retirada
 
-Si Ubisoft o cualquier titular de derechos considera que algún contenido de
+Si la editora o cualquier titular de derechos considera que algún contenido de
 este repo infringe sus derechos, puede abrir un issue en este repo o usar el
 mecanismo de retirada de GitHub; el contenido señalado se retirará de
 inmediato.
