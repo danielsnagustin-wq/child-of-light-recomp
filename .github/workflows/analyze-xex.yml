@@ -1,5 +1,14 @@
 name: Analyze XEX (Phase 0)
 
+# OBSOLETO (hunt 2, P2-7, 2026-11-13): la Fase 0 ya esta hecha en local.
+# NO correr este workflow: clona XenonRecomp SIN pin y corre el XenonAnalyse
+# STOCK, que da 0 jump tables en este XEX (fallo de deteccion conocido; el
+# conteo real es 192 tablas / 4.380 labels, analysis/FASE0.md), y el paso
+# "Run XenonAnalyse" usa `set +e` y solo avisa si el TOML sale vacio, asi
+# que un run "verde" aqui seria enganoso. Si se vuelve a necesitar, pinnear
+# el commit, aplicar los 13 parches de patches/XenonRecomp/ y usar
+# tools/find_jumptables.py (el de wivi514), no el analyse stock.
+#
 # Fase 0: analiza el default.xex de Child of Light (Xbox 360) con XenonAnalyse
 # y genera un informe de complejidad. No construye nada jugable.
 #
