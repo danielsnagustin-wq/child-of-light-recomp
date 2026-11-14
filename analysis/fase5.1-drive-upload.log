@@ -1,0 +1,182 @@
+== inicio Fri Nov 13 17:56:15 CST 2026 ==
+-- partiendo APK --
+total 1572296
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part00
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part01
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part02
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part03
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part04
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part05
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part06
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part07
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part08
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part09
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part10
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part11
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part12
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part13
+-rw-rw---- 1 root nogroup 104857600 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part14
+-rw-rw---- 1 root nogroup  37164992 Nov 13 17:56 ChildOfLight-recomp-v1.4.1-full.apk.part15
+-- MD5SUMS --
+c0663de20a906f99ab454284a9fda0a6  ChildOfLight-recomp-v1.4.1-full.apk.part00
+de031769c65436ab051a5dca4c411f18  ChildOfLight-recomp-v1.4.1-full.apk.part01
+2842bb723b7651d3686805bc4a3a1a0d  ChildOfLight-recomp-v1.4.1-full.apk.part02
+1882330661f650f85f3529a3a7e9fee0  ChildOfLight-recomp-v1.4.1-full.apk.part03
+4d925ab2fa9cf9c7e6754b1f70bb814b  ChildOfLight-recomp-v1.4.1-full.apk.part04
+448109b55d8ec1294af21d3ceb8011ab  ChildOfLight-recomp-v1.4.1-full.apk.part05
+7fcb083a460c46038af64c557854d268  ChildOfLight-recomp-v1.4.1-full.apk.part06
+fd341cbe72a16979776295757f042ca7  ChildOfLight-recomp-v1.4.1-full.apk.part07
+affcf101ffbfd61a922c1b3a52ab1a21  ChildOfLight-recomp-v1.4.1-full.apk.part08
+39bf7711f8a3adaf47f34d49903c485f  ChildOfLight-recomp-v1.4.1-full.apk.part09
+405d9dfb11103f0cbf0c310eb6fc3a6d  ChildOfLight-recomp-v1.4.1-full.apk.part10
+9812b29d28fa325f97e028bade6c449d  ChildOfLight-recomp-v1.4.1-full.apk.part11
+3892985dea7a848fb63720f43d0c9697  ChildOfLight-recomp-v1.4.1-full.apk.part12
+f6279fb14283cabaf71ac65e66539668  ChildOfLight-recomp-v1.4.1-full.apk.part13
+3e24e4e9699c1702e0149c14705850aa  ChildOfLight-recomp-v1.4.1-full.apk.part14
+6190768e3a06d5c755fdab63ca488f0a  ChildOfLight-recomp-v1.4.1-full.apk.part15
+APK MD5: 4a6da2f85d24393a95e4e784be92a622
+-- README --
+el port — v1.4.1-full (PRUEBA, no terminada)
+==========================================================
+APK: ChildOfLight-recomp-v1.4.1-full.apk — 1.610.028.992 B
+MD5 de la APK: 4a6da2f85d24393a95e4e784be92a622
+SHA-256: 30d0e90216b6b78880cdfc0bc48d3dee59b2358427c69d1e432afa4985a2f222
+Versión: 1.4.1-full (versionCode 5). Arreglo: super.onCreate() primero en
+MainActivity (el crasheo al entrar de la v1.4).
+
+INSTALACIÓN (en el teléfono, con Termux, dentro de esta carpeta):
+1. Desinstala la v1.4-full antes de instalar esta.
+2. cat ChildOfLight-recomp-v1.4.1-full.apk.part* > ChildOfLight-recomp-v1.4.1-full.apk
+3. md5sum ChildOfLight-recomp-v1.4.1-full.apk
+   Tiene que dar EXACTAMENTE: 4a6da2f85d24393a95e4e784be92a622
+   (si no da eso, no la instales; vuelve a descargar las partes).
+4. Instala la APK, ábrela y el juego debe arrancar DIRECTO, sin importar nada.
+   Tamaño total ~1,6-1,7 GB. Datos debe quedar en MB, no en 1,58 GB:
+   si Datos muestra ~1,58 GB, el montaje desde dentro de la APK no está
+   activo — manda el log (childoflight.log).
+5. Comprueba: ¿entra sin que te vote? ¿el título sigue cortado? ¿la banda
+   blanca sigue? ¿el "Cargando..." de la 2ª entrada es más rápido?
+
+NO compartir este enlace ni estos archivos con nadie. Solo para pruebas.
+-- creando carpeta en Drive --
+{
+  "id": "1a1AWrsZSLP0YaiW26Ho9YJZRIc3oGzbc",
+  "kind": "drive#file",
+  "mimeType": "application/vnd.google-apps.folder",
+  "name": "el port v1.4.1-full"
+}
+FOLDER_ID=1a1AWrsZSLP0YaiW26Ho9YJZRIc3oGzbc
+-- subiendo archivos (con reintentos x3) --
+upload ChildOfLight-recomp-v1.4.1-full.apk.part00 (intento 1)...
+{
+  "id": "1oBx8T0XKU3CUf0suapAeK-pUOvk2ylEJ",
+  "kind": "drive#file",
+  "mimeType": "application/x-zip",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part00"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part00
+upload ChildOfLight-recomp-v1.4.1-full.apk.part01 (intento 1)...
+{
+  "id": "1kzbSvoHWapKXTHGLHQXmrvx-elgvm9di",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part01"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part01
+upload ChildOfLight-recomp-v1.4.1-full.apk.part02 (intento 1)...
+{
+  "id": "1wto8TojWq2oLT3zXEZNsPCsP07MBKgta",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part02"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part02
+upload ChildOfLight-recomp-v1.4.1-full.apk.part03 (intento 1)...
+{
+  "id": "1nHm6pMN4eCq4EQzCis1enohy8flCuuMb",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part03"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part03
+upload ChildOfLight-recomp-v1.4.1-full.apk.part04 (intento 1)...
+{
+  "id": "1Wh2SoklTDu0xm1pVS0H7IFABynKtLek-",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part04"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part04
+upload ChildOfLight-recomp-v1.4.1-full.apk.part05 (intento 1)...
+{
+  "id": "14MTSMh5kn2mfAMQakykshdLJIINl5tcl",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part05"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part05
+upload ChildOfLight-recomp-v1.4.1-full.apk.part06 (intento 1)...
+{
+  "id": "1h02mJ45X4NZHLcaDuDL01ShKyH7_bhj6",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part06"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part06
+upload ChildOfLight-recomp-v1.4.1-full.apk.part07 (intento 1)...
+{
+  "id": "1h6jpOJy5SaphAVzZpRmqPWN8HfSK_0gA",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part07"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part07
+upload ChildOfLight-recomp-v1.4.1-full.apk.part08 (intento 1)...
+{
+  "id": "1d3f56ZbsTH12rpdOnIC9us5Aax-tlbAm",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part08"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part08
+upload ChildOfLight-recomp-v1.4.1-full.apk.part09 (intento 1)...
+{
+  "id": "1sJWzUQJRWY8psKqC0KyAVO4wPsQ8YK1S",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part09"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part09
+upload ChildOfLight-recomp-v1.4.1-full.apk.part10 (intento 1)...
+{
+  "id": "1bNAQndlkULNybXCTSt3ya8cXkASp_2rY",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part10"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part10
+upload ChildOfLight-recomp-v1.4.1-full.apk.part11 (intento 1)...
+{
+  "id": "1vrhxbMHaTRdFfWi9cOEmZJ5B8Gxqpeev",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part11"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part11
+upload ChildOfLight-recomp-v1.4.1-full.apk.part12 (intento 1)...
+{
+  "id": "1Pa3iRJN5d1yltzrxr3YOeNw922DczrtJ",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part12"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part12
+upload ChildOfLight-recomp-v1.4.1-full.apk.part13 (intento 1)...
+{
+  "id": "1QjsYr6uiDWm2qaThj6LjVVGC9qo8bWvu",
+  "kind": "drive#file",
+  "mimeType": "application/octet-stream",
+  "name": "ChildOfLight-recomp-v1.4.1-full.apk.part13"
+}
+OK ChildOfLight-recomp-v1.4.1-full.apk.part13
+upload ChildOfLight-recomp-v1.4.1-full.apk.part14 (intento 1)...
