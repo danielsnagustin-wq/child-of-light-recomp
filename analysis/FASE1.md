@@ -29,7 +29,7 @@ address is unspecified` desaparecieron.
 ## 2. Switch-tails: 369 → 0 (HECHO)
 
 `tools/fix_switch_function_bounds.py` (adaptado de wivi514 a las rutas y
-al rango .text de CoL, 0x82170000..0x82CD2210) calculó 25 overrides de
+al rango .text del título, 0x82170000..0x82CD2210) calculó 25 overrides de
 tamaño, que se aplicaron en `recomp/col.toml` (`functions = [...]`).
 
 **Efecto medido (run 3 vs run 2):** `jump outside function`
@@ -65,10 +65,10 @@ Parches en `patches/XenonRecomp/` (nombres originales de wivi514, ver
 (−56 %). Jump-outside sigue en 0. Los 14 parches de wivi514 aplican
 limpios en secuencia sobre el HEAD actual de XenonRecomp (verificado
 con `git apply --check` en orden); los no incluidos (0002, 0003, 0007,
-0009, 0010, 0013, 0014) no los usa CoL o son de fase Android (ver
+0009, 0010, 0013, 0014) no los usa el título o son de fase Android (ver
 README de parches).
 
-## 5. Lowerings propios de CoL: 4.160 restantes (EN CURSO)
+## 5. Lowerings propios del título: 4.160 restantes (EN CURSO)
 
 Restan 26 mnemónicos (run 4):
 
