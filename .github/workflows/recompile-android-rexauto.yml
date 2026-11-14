@@ -16,8 +16,20 @@
 #   1. Nombre de proyecto fijo: `childoflight` (rexauto exige [a-z0-9_]{1,40};
 #      `child-of-light` con guiones es inválido). No hay input `name`.
 #   2. Doble checkout: este repo + rexauto en `rexauto/` (commit fijado arriba).
-#      Todos los scripts de rexauto (rexauto.py, tools/*, android/*) se ejecutan
-#      desde ese checkout; este repo solo aporta el workflow y la documentación.
+#      Este repo es un DELTA sobre rexauto@dac49b33: solo los archivos que
+#      cambiamos o anadimos viven aqui (tools/rexauto/android/ + nuestro
+#      tools/rexauto/tools/android_sdk.sh). El paso "Overlay our port tree"
+#      los copia sobre el checkout rexauto ANTES del SDK y del Gradle; sin
+#      el, el job construiria el launcher STOCK (sin parche Mali, sin fix
+#      super.onCreate, sin espanol, sin pulso de entrada) -- P0-1, caza
+#      ronda 2 (2026-11-13). El paso "Re-overlay tracked SDK files" vuelve
+#      a copiar los archivos SDK trackeados DESPUES del SDK: android_sdk.sh
+#      hace rm -rf y reconstruye solo desde parches, y los archivos SDK
+#      trackeados (STFS de Fase 5 + ediciones a mano) no los produce ningun
+#      parche -- sin el, un build con cache-miss perderia el soporte STFS
+#      (prueba de assemble-android-tree.sh, 2026-11-13). El codegen (job recompile) sigue usando el
+#      XenonRecomp STOCK de rexauto (sin nuestros parches 0015-0022 ni
+#      register-as-local ni db16cyc->yield): TODO, ver abajo.
 #   3. `runheal` por defecto `true` (en rexauto Android es `false`): sin gabarito
 #      previo de CoL, el heal en Windows es la única fuente de curas.
 #      `heal_iters` por defecto `"6"` (en rexauto Android es `"4"`).
@@ -41,6 +53,12 @@
 #     de producción.
 #   - Title ID a confirmar con el dump (citado 5841140D, no verificado).
 #   - Jump tables: el CI salta jumptables siempre (--no-jumptables, no hay IDA).
+#   - Codegen con XenonRecomp parcheado (parches 0015-0022 + localize_fix_col.py
+#     + db16cyc->yield): hoy el job recompile usa el stock, asi que el C++
+#     de CI no es el mismo que el local. El paso "Guard: patched codegen
+#     required" falla el job si col.toml trae *_as_local = true, para no
+#     generar codigo roto en silencio. El APK de CI (job apk) SI lleva
+#     nuestros archivos de app y parches SDK gracias al overlay.
 
 name: Recompile Child of Light for Android (rexauto)
 
@@ -178,6 +196,22 @@ jobs:
           Write-Host "actual:   $actual"
           if ($actual -ne $expected) { Write-Host "::error::SHA-256 mismatch: the downloaded ISO is not the expected one"; exit 1 }
 
+      - name: "Guard: patched codegen required for register-as-local"
+        shell: pwsh
+        run: |
+          # recomp/col.toml flips the 6 *_as_local options (v1.4.2). Stock
+          # XenonRecomp would then generate a PRUNED PPCContext (fields
+          # missing) and code that reads ctx.<reg> for fields that do not
+          # exist. The codegen must use our patched XenonRecomp (patches
+          # 0015-0022, incl. 0021 unconditional struct fields) + run
+          # tools/localize_fix_col.py on the generated tree. Until that
+          # wiring lands, fail fast instead of shipping broken codegen.
+          $toml = Get-Content -Raw "recomp/col.toml"
+          if ($toml -match '(?m)^\s*\w+_as_local\s*=\s*true') {
+            Write-Host "::error::recomp/col.toml enables *_as_local but the recompile job still uses STOCK XenonRecomp: wire the patched codegen (patches/XenonRecomp/0015-0022 + tools/localize_fix_col.py) before running this job. See docs/REXAUTo.md."
+            exit 1
+          }
+
       - name: Recompile (codegen + static heal + build check)
         shell: pwsh
         working-directory: rexauto
@@ -253,6 +287,24 @@ jobs:
           ref: ${{ env.REXAUTO_REF }}
           path: rexauto
 
+      - name: Overlay our port tree onto rexauto
+        run: |
+          set -euo pipefail
+          # This repo is a DELTA on rexauto@dac49b33: only the files we
+          # changed or added live here. Without this step the Gradle below
+          # would build the STOCK rexauto launcher + stock SDK (no Mali
+          # patch, no super.onCreate fix, no Spanish, no input pulse) --
+          # P0-1, hunt round 2 (2026-11-13). The copy is safe: in CI this
+          # checkout holds exactly the tracked files (sdk/, build/,
+          # .gradle/, ci-release.jks, local.properties are gitignored, and
+          # settings.gradle.kts is not tracked -- the stock one stays).
+          cp -r tools/rexauto/android/. rexauto/android/
+          cp tools/rexauto/tools/android_sdk.sh rexauto/tools/android_sdk.sh
+          # Sanity: the files that must differ from stock are present.
+          test -f rexauto/android/app/src/main/java/com/rexauto/port/gamepad/VirtualPadView.java
+          grep -q "mali-vertex-stores" rexauto/tools/android_sdk.sh
+          grep -q 'vulkan_async_skip_incomplete_frames", "false"' rexauto/android/app/src/main/java/com/rexauto/port/GraphicsSettings.java
+
       - name: Free disk space + swap (runners have ~14 GB SSD)
         run: |
           sudo swapoff /swapfile 2>/dev/null || true
@@ -298,11 +350,24 @@ jobs:
         id: sdk-cache
         with:
           path: rexauto/android/sdk
-          key: android-sdk-v0.10.0-${{ hashFiles('rexauto/android/patches/*.patch', 'rexauto/tools/android_sdk.sh') }}
+          key: android-sdk-v0.10.0-${{ hashFiles('rexauto/android/patches/*.patch', 'rexauto/tools/android_sdk.sh', 'tools/rexauto/android/patches/*.patch', 'tools/rexauto/tools/android_sdk.sh', 'tools/rexauto/android/sdk/**') }}
 
       - name: ReXGlue SDK (v0.10.0 + Android patches)
         working-directory: rexauto
         run: tools/android_sdk.sh
+
+      - name: Re-overlay tracked SDK files (after SDK setup)
+        run: |
+          set -euo pipefail
+          # android_sdk.sh rm -rf's the SDK dir and rebuilds it from patches
+          # only. The tracked SDK files (17 + the 4 new STFS files from
+          # Fase 5) and the hand edits they carry (STFS VFS, WaitMultiple,
+          # mprotect...) are NOT produced by any patch — a cache-miss build
+          # would lose STFS support without this step (assemble test,
+          # 2026-11-13). Tracked files win over patches by design.
+          cp -r tools/rexauto/android/sdk/. rexauto/android/sdk/
+          test -f rexauto/android/sdk/rexglue-sdk/src/filesystem/devices/stfs_data_file.cpp
+          test -f rexauto/android/sdk/rexglue-sdk/src/filesystem/stfs_asset_source.cpp
 
       - name: Android CMake 3.31.1
         run: |
@@ -348,6 +413,9 @@ jobs:
           REX_TITLE_ID: ${{ needs.recompile.outputs.title_id }}
         run: |
           set -euo pipefail
+          # Hunt 2, P2-6: un Title ID 00000000 (fallback) enmascararia que
+          # title_meta.py no produjo nada; la APK rechazaría el juego.
+          if [ -z "${REX_TITLE_ID:-}" ] || [ "$REX_TITLE_ID" = "00000000" ]; then echo "::error::REX_TITLE_ID is empty or 00000000 -- title_meta.py produced nothing"; exit 1; fi
           if [ "${{ inputs.baseline_arm }}" = "true" ]; then export REX_ANDROID_BASELINE_ARM=1; fi
           cd rexauto/android
           chmod +x gradlew
@@ -369,6 +437,11 @@ jobs:
           grep -Eq "lib/arm64-v8a/librexgpu-xenos.*\.so" /tmp/apk.txt || { echo "::error::GPU plugin missing"; exit 1; }
           grep -q "assets/xbox360_titles.json" /tmp/apk.txt || { echo "::error::title DB missing"; exit 1; }
           grep -q "lib/arm64-v8a/libadrenotools.so" /tmp/apk.txt && grep -q "lib/arm64-v8a/libmain_hook.so" /tmp/apk.txt || echo "::warning::libadrenotools not packaged - custom GPU drivers will be unavailable"
+          # Hunt 2, P2-5: el verify es el ultimo control antes de subir el
+          # artefacto y debe validar la firma (que la APK se pueda instalar).
+          # Con pipefail (arriba) un verify fallido mata el paso.
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/verify.txt
           cp "$APK" "${{ runner.temp }}/${{ env.REX_PROJECT }}-android.apk"
           SIZE=$(stat -c%s "$APK")
           {
